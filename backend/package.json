@@ -1,0 +1,26 @@
+{
+  "name": "ai-seo-optimizer-backend",
+  "version": "1.0.0",
+  "description": "AI-powered SEO improvement tool - backend API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "axios": "^1.19.0",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.81.2",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
+    "pg": "^8.22.0"
+  }
+}
