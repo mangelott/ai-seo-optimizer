@@ -22,8 +22,10 @@ backend/    API Express + worker de auditorias
 ### Backend
 
 ```bash
+docker compose up -d    # Postgres (porta 5433) + Redis (porta 6379) locais
+
 cd backend
-cp .env.example .env   # preencher DATABASE_URL, REDIS_URL, JWT_SECRET, ANTHROPIC_API_KEY,
+cp .env.example .env   # preencher DATABASE_URL (porta 5433), REDIS_URL, JWT_SECRET, ANTHROPIC_API_KEY,
                         # DATAFORSEO_LOGIN/PASSWORD, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
                         # STRIPE_PRICE_STARTER/PRO/AGENCY
 npm install
@@ -32,7 +34,7 @@ npm run dev             # API em http://localhost:4000
 node jobs/auditWorker.js   # worker de auditorias (processo separado)
 ```
 
-Requer Postgres e Redis a correr localmente (ou via Docker). Para testar o webhook do Stripe localmente, usa `stripe listen --forward-to localhost:4000/api/billing/webhook`.
+A porta do Postgres no `docker-compose.yml` está mapeada para 5433 (não 5432) para não entrar em conflito com um Postgres local já instalado. Para testar o webhook do Stripe localmente, usa `stripe listen --forward-to localhost:4000/api/billing/webhook`.
 
 ### Frontend
 
