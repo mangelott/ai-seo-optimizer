@@ -6,7 +6,7 @@ const pool = require('../db/pool');
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, scanId } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
   }
@@ -17,7 +17,16 @@ router.post('/register', async (req, res) => {
       'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email',
       [email, passwordHash]
     );
-    res.status(201).json(result.rows[0]);
+    const user = result.rows[0];
+
+    if (scanId) {
+      await pool.query(
+        'UPDATE quick_scans SET claimed_by_user_id = $1 WHERE id = $2 AND claimed_by_user_id IS NULL',
+        [user.id, scanId]
+      );
+    }
+
+    res.status(201).json(user);
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Email already registered' });

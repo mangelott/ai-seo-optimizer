@@ -40,3 +40,36 @@ pre {
   overflow-x: auto;
   border-radius: 4px;
 }
+
+.fix-card {
+  border: 1px solid #ddd;
+  border-left: 4px solid #999;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.fix-card.severity-high {
+  border-left-color: #c0392b;
+}
+
+.fix-card.severity-medium {
+  border-left-color: #e67e22;
+}
+
+.fix-card.severity-low {
+  border-left-color: #27ae60;
+}
+
+.fix-header {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.fix-snippet {
+  margin: 8px 0;
+}

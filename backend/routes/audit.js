@@ -2,10 +2,11 @@ const express = require('express');
 const pool = require('../db/pool');
 const { auditQueue } = require('../jobs/queue');
 const { requireAuth } = require('../middleware/auth');
+const { enforcePlanLimit } = require('../middleware/planLimit');
 
 const router = express.Router();
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
   const { domain } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
 
@@ -15,7 +16,14 @@ router.post('/', requireAuth, async (req, res) => {
   );
   const auditId = result.rows[0].id;
 
-  await auditQueue.add('run-audit', { auditId, domain });
+  if (req.planKey === 'free') {
+    await pool.query(
+      'UPDATE users SET lifetime_free_audits_used = lifetime_free_audits_used + 1 WHERE id = $1',
+      [req.user.id]
+    );
+  }
+
+  await auditQueue.add('run-audit', { auditId, domain, categories: req.plan.categories });
 
   res.status(202).json({ auditId, status: 'pending' });
 });

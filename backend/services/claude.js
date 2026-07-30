@@ -2,14 +2,26 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const SYSTEM_PROMPT = `You are an SEO expert. Given audit data for a domain, return a prioritized list of fixes as a JSON array (highest impact first). Each item must have exactly these fields:
+- "category": one of "technical", "content", "keywords", "backlinks"
+- "severity": one of "high", "medium", "low"
+- "issue": short description of the problem
+- "currentValue": the current value found in the audit (string, or null if not applicable)
+- "suggestedFix": the corrected value or concrete action to take (string)
+- "snippet": ready-to-paste code/markup for the fix when applicable (HTML, JSON-LD, meta tag, etc.), or null if not applicable
+- "cmsAutoApplicable": boolean, true if this fix could be auto-applied via a CMS API (e.g. WordPress) in the future
+
+Return ONLY the JSON array, no prose, no markdown fences.`;
+
 async function generateRecommendations({ domain, technical, content, keywords, backlinks }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
-    max_tokens: 2000,
+    max_tokens: 3000,
+    system: SYSTEM_PROMPT,
     messages: [
       {
         role: 'user',
-        content: `You are an SEO expert. Given the following audit data for ${domain}, produce a prioritized list of actionable SEO recommendations (highest impact first). Return concise bullet points grouped by category (technical, content, keywords, backlinks).
+        content: `Domain: ${domain}
 
 Technical audit: ${JSON.stringify(technical)}
 Content data: ${JSON.stringify(content)}
@@ -19,7 +31,11 @@ Backlink data: ${JSON.stringify(backlinks)}`,
     ],
   });
 
-  return message.content[0].text;
+  try {
+    return JSON.parse(message.content[0].text);
+  } catch {
+    return [];
+  }
 }
 
 module.exports = { generateRecommendations };
