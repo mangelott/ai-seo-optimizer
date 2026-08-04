@@ -16,7 +16,7 @@ Return ONLY the JSON array, no prose, no markdown fences.`;
 async function generateRecommendations({ domain, technical, content, keywords, backlinks }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
-    max_tokens: 3000,
+    max_tokens: 4000,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -31,8 +31,13 @@ Backlink data: ${JSON.stringify(backlinks)}`,
     ],
   });
 
+  const textBlock = message.content.find((block) => block.type === 'text');
+  if (!textBlock) return [];
+
+  const raw = textBlock.text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+
   try {
-    return JSON.parse(message.content[0].text);
+    return JSON.parse(raw);
   } catch {
     return [];
   }
