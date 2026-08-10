@@ -1,0 +1,60 @@
+.track {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.option {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.option:hover {
+  background: var(--border);
+}
+
+.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.06);
+}
+
+.active:hover {
+  background: var(--surface);
+}
+
+.pillTrack {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.pillActive {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}

@@ -7,7 +7,7 @@ const { enforcePlanLimit } = require('../middleware/planLimit');
 const router = express.Router();
 
 router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
-  const { domain } = req.body;
+  const { domain, language } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
 
   const result = await pool.query(
@@ -23,7 +23,12 @@ router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
     );
   }
 
-  await auditQueue.add('run-audit', { auditId, domain, categories: req.plan.categories });
+  await auditQueue.add('run-audit', {
+    auditId,
+    domain,
+    categories: req.plan.categories,
+    language: language || 'en',
+  });
 
   res.status(202).json({ auditId, status: 'pending' });
 });
@@ -39,7 +44,9 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 router.get('/', requireAuth, async (req, res) => {
   const result = await pool.query(
-    'SELECT id, domain, status, score, created_at, completed_at FROM audits WHERE user_id = $1 ORDER BY created_at DESC',
+    `SELECT id, domain, status, score, created_at, completed_at,
+     jsonb_array_length(COALESCE(ai_recommendations, '[]'::jsonb)) AS issue_count
+     FROM audits WHERE user_id = $1 ORDER BY created_at DESC`,
     [req.user.id]
   );
   res.json(result.rows);

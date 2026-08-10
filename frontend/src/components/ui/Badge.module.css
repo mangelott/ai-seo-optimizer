@@ -1,0 +1,68 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.high {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.highSolid {
+  background: var(--danger);
+  color: white;
+  font-size: 11px;
+}
+
+.medium {
+  background: var(--warning-soft);
+  color: var(--warning-strong);
+}
+.mediumSolid {
+  background: var(--warning-strong);
+  color: white;
+  font-size: 11px;
+}
+
+.low {
+  background: var(--surface2);
+  color: var(--text-faint);
+}
+.lowSolid {
+  background: var(--text-faint);
+  color: white;
+  font-size: 11px;
+}
+
+.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.neutral {
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-weight: 700;
+  padding: 3px 10px;
+}
+
+.category {
+  background: var(--surface2);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+
+.plan {
+  background: var(--accent);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+}

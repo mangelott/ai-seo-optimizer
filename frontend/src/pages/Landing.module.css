@@ -1,0 +1,455 @@
+.hero {
+  max-width: 1360px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 0;
+  align-items: stretch;
+  padding-top: 24px;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+.heroLeft {
+  padding: 64px 56px 64px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .heroLeft {
+    padding: 40px 20px;
+  }
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  padding: 6px 12px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.h1 {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 20px 0 0;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .h1 {
+    font-size: 32px;
+  }
+}
+
+.accent {
+  font-style: italic;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.subtitle {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 20px 0 0;
+  max-width: 480px;
+}
+
+.scanBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  max-width: 480px;
+  margin: 32px 0 0;
+}
+
+.scanBarOnDark {
+  background: var(--surface);
+}
+
+.scanPrefix {
+  color: var(--text-faint);
+  font-size: 15px;
+  padding-left: 4px;
+  white-space: nowrap;
+}
+
+.scanInput {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text);
+  padding: 8px 4px;
+  font-family: 'Geist', sans-serif;
+  min-width: 0;
+}
+
+.scanNote {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-top: 14px;
+}
+
+.heroRight {
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 40px;
+  position: relative;
+}
+
+.previewCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px;
+  max-width: 400px;
+  width: 100%;
+  position: relative;
+  transform: rotate(-2.5deg);
+  box-shadow: var(--hero-shadow);
+}
+
+.previewBadge {
+  position: absolute;
+  top: -38px;
+  right: 8px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 999px;
+  transform: rotate(-6deg);
+  white-space: nowrap;
+  box-shadow: 0 8px 20px -6px oklch(20% 0.02 260 / 0.4);
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.previewDomain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.previewRing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.previewIssues {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.previewIssueRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: 10px;
+}
+
+.section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+.sectionTitle {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
+  margin: 0;
+  color: var(--text);
+}
+
+.benefitsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 40px;
+}
+
+@media (max-width: 800px) {
+  .benefitsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.benefitIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+.benefitTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+.benefitDesc {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.trustSection {
+  background: var(--surface2);
+  padding: 80px 0;
+}
+
+.trustLabel {
+  font-size: 13px;
+  color: var(--text-faint);
+  text-align: center;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.logos {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  margin: 20px 0 56px;
+  flex-wrap: wrap;
+}
+
+.logo {
+  font-family: 'Geist Mono', monospace;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.featuredQuote {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px;
+}
+
+.featuredQuoteText {
+  font-size: 22px;
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.avatarRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.avatarSm {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+
+.testimonialName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.testimonialRole {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.testimonialsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.testimonialCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.pricingSection {
+  padding: 96px 0;
+  text-align: center;
+}
+
+.pricingSubtitle {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+}
+
+.pricingTeaserGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 40px;
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.teaserCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 16px;
+  text-align: center;
+}
+
+.teaserName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.teaserPrice {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  margin-top: 8px;
+  font-family: 'Geist Mono', monospace;
+}
+
+.teaserPeriod {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.ctaBand {
+  background: var(--accent);
+  padding: 96px 0;
+}
+
+.ctaInner {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.ctaTitle {
+  font-size: 30px;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 56px 0;
+}
+
+.footerInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 32px;
+}
+
+@media (max-width: 700px) {
+  .footerInner {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.footerLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.footerTagline {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-top: 12px;
+  max-width: 220px;
+}
+
+.footerHead {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.footerLink {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}

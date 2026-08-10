@@ -1,0 +1,25 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.hover:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.hoverSoft:hover {
+  border-color: var(--border-strong);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.noPadding {
+  padding: 0;
+  overflow: hidden;
+}

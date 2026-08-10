@@ -2,6 +2,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
+  name TEXT,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   plan TEXT NOT NULL DEFAULT 'free',
@@ -9,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   stripe_customer_id TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
 
 CREATE TABLE IF NOT EXISTS audits (
   id SERIAL PRIMARY KEY,
@@ -43,6 +46,6 @@ CREATE TABLE IF NOT EXISTS quick_scans (
   score INTEGER,
   issues_count INTEGER,
   full_result JSONB,
-  claimed_by_user_id INTEGER REFERENCES users(id),
+  claimed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );

@@ -9,7 +9,7 @@ const { generateRecommendations } = require('../services/claude');
 const worker = new Worker(
   'audit',
   async (job) => {
-    const { auditId, domain, categories = ['technical', 'content'] } = job.data;
+    const { auditId, domain, categories = ['technical', 'content'], language = 'en' } = job.data;
 
     const tasks = {
       technical: categories.includes('technical') ? getOnPageAudit(domain).catch(() => null) : Promise.resolve(null),
@@ -34,13 +34,22 @@ const worker = new Worker(
       content,
       keywords,
       backlinks,
+      language,
     }).catch(() => []);
+
+    const penalty = aiRecommendations.reduce((sum, fix) => {
+      if (fix.severity === 'high') return sum + 15;
+      if (fix.severity === 'medium') return sum + 7;
+      if (fix.severity === 'low') return sum + 3;
+      return sum;
+    }, 0);
+    const score = Math.max(0, Math.min(100, 100 - penalty));
 
     await pool.query(
       `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
-       keyword_result = $3, backlink_result = $4, ai_recommendations = $5, completed_at = now()
-       WHERE id = $6`,
-      [technical, content, JSON.stringify(keywords), backlinks, JSON.stringify(aiRecommendations), auditId]
+       keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, completed_at = now()
+       WHERE id = $7`,
+      [technical, content, JSON.stringify(keywords), backlinks, JSON.stringify(aiRecommendations), score, auditId]
     );
   },
   { connection }

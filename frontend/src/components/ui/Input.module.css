@@ -1,0 +1,38 @@
+.input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  font-family: 'Geist', sans-serif;
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.input:disabled {
+  color: var(--text-faint);
+  background: var(--surface2);
+  cursor: not-allowed;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 6px;
+}
