@@ -7,6 +7,7 @@
 require('dotenv').config();
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const app = require('../app');
 const pool = require('../db/pool');
 const { connection: redisConnection } = require('../jobs/queue');
@@ -235,6 +236,95 @@ test('billing summary: free plan reports usage against its lifetime limit, not a
   assert.equal(after.data.auditsThisMonth, 1);
   assert.equal(after.data.auditsLimit, 1);
   assert.notEqual(after.data.auditsLimit, 0, 'free plan must never report a 0 audit limit');
+});
+
+test('google oauth: /google redirects to Google\'s consent screen with our client id and callback url', async () => {
+  const res = await fetch(`${baseUrl}/api/auth/google?scanId=abc-123`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  const location = res.headers.get('location');
+  assert.match(location, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/);
+  const params = new URL(location).searchParams;
+  assert.equal(params.get('client_id'), process.env.GOOGLE_CLIENT_ID);
+  assert.equal(params.get('redirect_uri'), process.env.GOOGLE_REDIRECT_URI);
+  assert.equal(params.get('response_type'), 'code');
+  assert.equal(params.get('state'), 'abc-123');
+});
+
+test('google oauth: callback without a code redirects back to login with an error, does not crash', async () => {
+  const res = await fetch(`${baseUrl}/api/auth/google/callback`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  assert.match(res.headers.get('location'), /\/login\?error=google_auth_failed$/);
+});
+
+test('password reset: forgot-password always returns ok and never reveals whether the email exists', async () => {
+  const email = uniqueEmail('forgot');
+  await registerAndLogin(email);
+
+  const existing = await json('POST', '/api/auth/forgot-password', { body: { email } });
+  assert.equal(existing.status, 200);
+  assert.deepEqual(existing.data, { ok: true });
+
+  const nonExistent = await json('POST', '/api/auth/forgot-password', {
+    body: { email: uniqueEmail('never-registered') },
+  });
+  assert.equal(nonExistent.status, 200);
+  assert.deepEqual(nonExistent.data, { ok: true });
+
+  const row = await pool.query('SELECT reset_token_hash, reset_token_expires FROM users WHERE email = $1', [email]);
+  assert.ok(row.rows[0].reset_token_hash, 'a reset token hash should have been stored');
+  assert.ok(new Date(row.rows[0].reset_token_expires) > new Date(), 'expiry should be in the future');
+});
+
+test('password reset: a valid token lets you set a new password, exactly once', async () => {
+  const email = uniqueEmail('reset');
+  await registerAndLogin(email);
+
+  const rawToken = 'test-raw-token-' + crypto.randomBytes(8).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  await pool.query(
+    "UPDATE users SET reset_token_hash = $1, reset_token_expires = now() + interval '1 hour' WHERE email = $2",
+    [tokenHash, email]
+  );
+
+  const reset = await json('POST', '/api/auth/reset-password', {
+    body: { token: rawToken, newPassword: 'brandnewpassword123' },
+  });
+  assert.equal(reset.status, 200);
+
+  const oldPasswordLogin = await json('POST', '/api/auth/login', { body: { email, password: 'password123' } });
+  assert.equal(oldPasswordLogin.status, 401);
+
+  const newPasswordLogin = await json('POST', '/api/auth/login', {
+    body: { email, password: 'brandnewpassword123' },
+  });
+  assert.equal(newPasswordLogin.status, 200);
+
+  const reuse = await json('POST', '/api/auth/reset-password', {
+    body: { token: rawToken, newPassword: 'anotherpassword456' },
+  });
+  assert.equal(reuse.status, 400, 'a reset token must not be reusable');
+});
+
+test('password reset: expired or garbage tokens are rejected', async () => {
+  const email = uniqueEmail('expired-reset');
+  await registerAndLogin(email);
+
+  const rawToken = 'expired-token-' + crypto.randomBytes(8).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  await pool.query(
+    "UPDATE users SET reset_token_hash = $1, reset_token_expires = now() - interval '1 hour' WHERE email = $2",
+    [tokenHash, email]
+  );
+
+  const expired = await json('POST', '/api/auth/reset-password', {
+    body: { token: rawToken, newPassword: 'irrelevant123' },
+  });
+  assert.equal(expired.status, 400);
+
+  const garbage = await json('POST', '/api/auth/reset-password', {
+    body: { token: 'this-token-was-never-issued', newPassword: 'irrelevant123' },
+  });
+  assert.equal(garbage.status, 400);
 });
 
 test('monitored domains: auditing a domain registers it, and removal really persists', async () => {

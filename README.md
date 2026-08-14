@@ -77,6 +77,28 @@ Os testes de integração usam `TRUNCATE` nas tabelas antes de correr — não u
 - `POST /api/billing/portal` — abre o portal de self-service do Stripe (cancelar/alterar plano, faturas).
 - `POST /api/billing/webhook` — sincroniza o plano do utilizador com o estado da subscrição no Stripe.
 
+## Login com Google
+
+Código pronto em `backend/routes/auth.js` (`GET /api/auth/google`, `GET /api/auth/google/callback`) e `backend/services/google.js`. Para ativar:
+
+1. Cria um projeto em [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**.
+2. Configura o **OAuth consent screen** (tipo External, adiciona o teu email como test user enquanto não estiver em produção).
+3. Cria uma credencial **OAuth 2.0 Client ID**, tipo **Web application**.
+4. Em **Authorized redirect URIs**, adiciona: `http://localhost:4000/api/auth/google/callback` (dev) e o equivalente em produção (`https://<teu-backend>/api/auth/google/callback`).
+5. Copia o **Client ID** e **Client Secret** para `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` no `.env`; `GOOGLE_REDIRECT_URI` deve ser exatamente o URI autorizado no passo 4.
+
+Sem isto configurado, o botão "Continuar com Google" leva a um ecrã de erro do próprio Google — não quebra o resto da app.
+
+## Recuperar password por email
+
+Código pronto em `backend/routes/auth.js` (`POST /api/auth/forgot-password`, `POST /api/auth/reset-password`) e `backend/services/email.js`, usando [Resend](https://resend.com/). Para ativar:
+
+1. Cria conta em resend.com e gera uma API key.
+2. Preenche `RESEND_API_KEY` no `.env`.
+3. Para `EMAIL_FROM`, podes usar o domínio de sandbox deles (`onboarding@resend.dev`) para testar sem verificar domínio próprio; para produção, verifica o teu domínio no Resend e usa um endereço desse domínio.
+
+Sem `RESEND_API_KEY` válida, o pedido de recuperação continua a responder com sucesso (por segurança, nunca revela se o email existe) mas o envio falha silenciosamente (fica registado nos logs do servidor).
+
 ## Roadmap
 
 - **Fase 1 (atual)**: correções geradas pela IA, prontas a copiar/colar manualmente.

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import api from '../api/client';
+import api, { API_BASE_URL } from '../api/client';
 import AuthLayout from '../components/layout/AuthLayout';
 import Button from '../components/ui/Button';
 import Input, { Label } from '../components/ui/Input';
@@ -49,6 +49,25 @@ export default function Register() {
             </span>
           </div>
         )}
+
+        <Button
+          variant="secondary"
+          full
+          type="button"
+          onClick={() => {
+            const url = new URL(`${API_BASE_URL}/auth/google`);
+            if (scanId) url.searchParams.set('state', scanId);
+            window.location.href = url.toString();
+          }}
+        >
+          {t('auth.continueWithGoogle')}
+        </Button>
+
+        <div className={styles.divider}>
+          <div className={styles.dividerLine} />
+          <span className={styles.dividerText}>{t('common.or')}</span>
+          <div className={styles.dividerLine} />
+        </div>
 
         <form onSubmit={handleSubmit}>
           <div className={styles.field}>

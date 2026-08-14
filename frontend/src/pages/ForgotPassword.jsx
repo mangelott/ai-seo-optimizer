@@ -4,16 +4,24 @@ import { useTranslation } from 'react-i18next';
 import AuthLayout from '../components/layout/AuthLayout';
 import Button from '../components/ui/Button';
 import Input, { Label } from '../components/ui/Input';
+import api from '../api/client';
 import styles from './Login.module.css';
 
 export default function ForgotPassword() {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    setSent(true);
+    setLoading(true);
+    try {
+      await api.post('/auth/forgot-password', { email });
+    } finally {
+      setLoading(false);
+      setSent(true);
+    }
   }
 
   return (
@@ -41,8 +49,8 @@ export default function ForgotPassword() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <Button type="submit" full style={{ marginTop: 20 }}>
-              {t('auth.forgotCta')}
+            <Button type="submit" full style={{ marginTop: 20 }} disabled={loading}>
+              {loading ? t('common.loading') : t('auth.forgotCta')}
             </Button>
           </form>
         )}

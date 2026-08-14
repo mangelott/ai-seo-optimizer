@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import api from '../api/client';
+import api, { API_BASE_URL } from '../api/client';
 import AuthLayout from '../components/layout/AuthLayout';
 import Button from '../components/ui/Button';
 import Input, { Label } from '../components/ui/Input';
@@ -37,7 +37,12 @@ export default function Login() {
           <p className={styles.subtitle}>{t('auth.loginSubtitle')}</p>
         </div>
 
-        <Button variant="secondary" full type="button">
+        <Button
+          variant="secondary"
+          full
+          type="button"
+          onClick={() => { window.location.href = `${API_BASE_URL}/auth/google`; }}
+        >
           {t('auth.continueWithGoogle')}
         </Button>
 
