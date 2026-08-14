@@ -45,6 +45,20 @@ npm install
 npm run dev              # http://localhost:5173
 ```
 
+## Testes
+
+```bash
+docker compose up -d
+docker exec -i ai-seo-optimizer-postgres-1 psql -U user -d ai_seo_optimizer < backend/db/schema.sql
+
+cd backend
+npm test              # unitários + integração (Postgres/Redis reais, sem chamar DataForSEO/Claude/Stripe)
+npm run test:unit     # só unitários (scoring, parsing do Claude, config de planos) — sem infra
+npm run test:integration   # só o fluxo HTTP completo (auth, limites de plano, quick-scan, billing)
+```
+
+Os testes de integração usam `TRUNCATE` nas tabelas antes de correr — não usar a base de dados de produção.
+
 ## Fluxo
 
 ### Utilizador anónimo (landing page)

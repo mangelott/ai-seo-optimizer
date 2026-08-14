@@ -20,6 +20,20 @@ function buildSystemPrompt(language) {
 Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). Return ONLY the JSON array, no prose, no markdown fences.`;
 }
 
+function parseRecommendationsResponse(content) {
+  const textBlock = (content || []).find((block) => block.type === 'text');
+  if (!textBlock) return [];
+
+  const raw = textBlock.text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 async function generateRecommendations({ domain, technical, content, keywords, backlinks, language = 'en' }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
@@ -38,16 +52,7 @@ Backlink data: ${JSON.stringify(backlinks)}`,
     ],
   });
 
-  const textBlock = message.content.find((block) => block.type === 'text');
-  if (!textBlock) return [];
-
-  const raw = textBlock.text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  return parseRecommendationsResponse(message.content);
 }
 
-module.exports = { generateRecommendations };
+module.exports = { generateRecommendations, parseRecommendationsResponse, buildSystemPrompt };

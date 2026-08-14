@@ -1,0 +1,41 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { PLANS } = require('../config/plans');
+
+const EXPECTED_PLAN_KEYS = ['free', 'starter', 'pro', 'agency'];
+const VALID_CATEGORIES = ['technical', 'content', 'keywords', 'backlinks'];
+
+test('has exactly the four expected plans', () => {
+  assert.deepEqual(Object.keys(PLANS).sort(), EXPECTED_PLAN_KEYS.sort());
+});
+
+test('every plan only references valid categories', () => {
+  for (const [key, plan] of Object.entries(PLANS)) {
+    for (const category of plan.categories) {
+      assert.ok(VALID_CATEGORIES.includes(category), `${key} has invalid category "${category}"`);
+    }
+  }
+});
+
+test('free plan uses a lifetime limit, not a monthly one', () => {
+  assert.equal(PLANS.free.auditsPerMonth, 0);
+  assert.equal(PLANS.free.lifetimeFullAudits, 1);
+});
+
+test('paid plans increase in scope: starter < pro < agency', () => {
+  assert.ok(PLANS.starter.categories.length < PLANS.pro.categories.length);
+  assert.equal(PLANS.pro.categories.length, VALID_CATEGORIES.length);
+  assert.equal(PLANS.agency.categories.length, VALID_CATEGORIES.length);
+});
+
+test('only free plan omits a Stripe price id', () => {
+  assert.equal(PLANS.free.stripePriceId, undefined);
+  for (const key of ['starter', 'pro', 'agency']) {
+    assert.ok('stripePriceId' in PLANS[key], `${key} should reference a Stripe price env var`);
+  }
+});
+
+test('agency plan is unlimited on both axes', () => {
+  assert.equal(PLANS.agency.auditsPerMonth, null);
+  assert.equal(PLANS.agency.maxDomains, null);
+});

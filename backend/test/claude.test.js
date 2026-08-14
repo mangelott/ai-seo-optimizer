@@ -1,0 +1,65 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { parseRecommendationsResponse, buildSystemPrompt } = require('../services/claude');
+
+const SAMPLE_FIX = {
+  category: 'content',
+  severity: 'high',
+  title: 'Missing meta description',
+  what: 'The page has no meta description.',
+  why: 'Hurts click-through rate from search results.',
+  currentValue: '',
+  suggestedFix: 'Add a 150-160 character meta description.',
+  snippet: '<meta name="description" content="...">',
+  cmsAutoApplicable: true,
+};
+
+test('parses a plain text block containing a JSON array', () => {
+  const content = [{ type: 'text', text: JSON.stringify([SAMPLE_FIX]) }];
+  const result = parseRecommendationsResponse(content);
+  assert.deepEqual(result, [SAMPLE_FIX]);
+});
+
+test('regression: skips a leading "thinking" block and finds the text block', () => {
+  // claude-sonnet-5 can return an extended-thinking block before the actual
+  // text response; content[0].text used to be read blindly, which broke this.
+  const content = [
+    { type: 'thinking', thinking: '', signature: 'abc123' },
+    { type: 'text', text: JSON.stringify([SAMPLE_FIX]) },
+  ];
+  const result = parseRecommendationsResponse(content);
+  assert.deepEqual(result, [SAMPLE_FIX]);
+});
+
+test('strips markdown code fences if the model wraps the JSON anyway', () => {
+  const content = [{ type: 'text', text: '```json\n' + JSON.stringify([SAMPLE_FIX]) + '\n```' }];
+  const result = parseRecommendationsResponse(content);
+  assert.deepEqual(result, [SAMPLE_FIX]);
+});
+
+test('returns an empty array when no text block is present', () => {
+  const content = [{ type: 'thinking', thinking: '', signature: 'abc123' }];
+  assert.deepEqual(parseRecommendationsResponse(content), []);
+});
+
+test('returns an empty array on invalid JSON instead of throwing', () => {
+  const content = [{ type: 'text', text: 'not valid json{{{' }];
+  assert.deepEqual(parseRecommendationsResponse(content), []);
+});
+
+test('returns an empty array if the model returns a JSON object instead of an array', () => {
+  const content = [{ type: 'text', text: JSON.stringify({ oops: 'not an array' }) }];
+  assert.deepEqual(parseRecommendationsResponse(content), []);
+});
+
+test('returns an empty array for undefined/null content', () => {
+  assert.deepEqual(parseRecommendationsResponse(undefined), []);
+  assert.deepEqual(parseRecommendationsResponse(null), []);
+});
+
+test('system prompt requests the correct output language', () => {
+  assert.match(buildSystemPrompt('pt'), /Portuguese/);
+  assert.match(buildSystemPrompt('en'), /English/);
+  // unsupported language codes fall back to English rather than throwing
+  assert.match(buildSystemPrompt('xx'), /English/);
+});
