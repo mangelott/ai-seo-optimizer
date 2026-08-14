@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import DashboardLayout from '../components/layout/DashboardLayout';
@@ -9,6 +9,12 @@ import FixCard from '../components/FixCard';
 import PaywallModal from '../components/PaywallModal';
 import api from '../api/client';
 import styles from './Report.module.css';
+
+// @react-pdf/renderer is ~600KB gzipped — only worth loading for the few
+// users on a plan that actually has PDF export, and only once they land here.
+const PdfExportLink = lazy(() => import('../components/PdfExportLink'));
+
+const PDF_PLANS = ['pro', 'agency'];
 
 const CATEGORIES = ['technical', 'content', 'keywords', 'backlinks'];
 const SEVERITIES = ['all', 'high', 'medium', 'low'];
@@ -24,10 +30,15 @@ export default function Report() {
   const [severity, setSeverity] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [plan, setPlan] = useState(null);
 
   useEffect(() => {
     api.get(`/audit/${id}`).then(({ data }) => setAudit(data));
   }, [id]);
+
+  useEffect(() => {
+    api.get('/auth/me').then(({ data }) => setPlan(data.plan));
+  }, []);
 
   useEffect(() => {
     if (!audit) return;
@@ -83,9 +94,20 @@ export default function Report() {
           </div>
         </div>
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={() => setShowPaywall(true)}>
-            {t('report.exportPdf')}
-          </Button>
+          {PDF_PLANS.includes(plan) ? (
+            <Suspense fallback={<Button variant="secondary" disabled>{t('common.loading')}</Button>}>
+              <PdfExportLink
+                audit={audit}
+                appName={t('common.appName')}
+                loadingLabel={t('common.loading')}
+                label={t('report.exportPdf')}
+              />
+            </Suspense>
+          ) : (
+            <Button variant="secondary" onClick={() => setShowPaywall(true)}>
+              {t('report.exportPdf')}
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => navigate(`/history?domain=${encodeURIComponent(audit.domain)}`)}>
             {t('report.seeHistory')}
           </Button>

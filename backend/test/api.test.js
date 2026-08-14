@@ -48,7 +48,7 @@ function uniqueEmail(label) {
 
 test.before(async () => {
   await pool.query(
-    'TRUNCATE quick_scans, subscriptions, audits, users RESTART IDENTITY CASCADE'
+    'TRUNCATE quick_scans, subscriptions, audits, monitored_domains, users RESTART IDENTITY CASCADE'
   );
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
@@ -235,6 +235,29 @@ test('billing summary: free plan reports usage against its lifetime limit, not a
   assert.equal(after.data.auditsThisMonth, 1);
   assert.equal(after.data.auditsLimit, 1);
   assert.notEqual(after.data.auditsLimit, 0, 'free plan must never report a 0 audit limit');
+});
+
+test('monitored domains: auditing a domain registers it, and removal really persists', async () => {
+  const token = await registerAndLogin(uniqueEmail('domains'));
+
+  const empty = await json('GET', '/api/domains', { token });
+  assert.deepEqual(empty.data, []);
+
+  await json('POST', '/api/audit', { token, body: { domain: 'https://tracked-site.com' } });
+
+  const afterAudit = await json('GET', '/api/domains', { token });
+  assert.equal(afterAudit.data.length, 1);
+  assert.equal(afterAudit.data[0].domain, 'https://tracked-site.com');
+
+  const otherToken = await registerAndLogin(uniqueEmail('domains-intruder'));
+  const stolenDelete = await json('DELETE', `/api/domains/${afterAudit.data[0].id}`, { token: otherToken });
+  assert.equal(stolenDelete.status, 404, 'cannot delete another user\'s monitored domain');
+
+  const removed = await json('DELETE', `/api/domains/${afterAudit.data[0].id}`, { token });
+  assert.equal(removed.status, 200);
+
+  const afterRemoval = await json('GET', '/api/domains', { token });
+  assert.deepEqual(afterRemoval.data, []);
 });
 
 test('account deletion cascades and revokes access', async () => {

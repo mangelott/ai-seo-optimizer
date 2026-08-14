@@ -16,6 +16,11 @@ router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
   );
   const auditId = result.rows[0].id;
 
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain) VALUES ($1, $2) ON CONFLICT (user_id, domain) DO NOTHING',
+    [req.user.id, domain]
+  );
+
   if (req.planKey === 'free') {
     await pool.query(
       'UPDATE users SET lifetime_free_audits_used = lifetime_free_audits_used + 1 WHERE id = $1',

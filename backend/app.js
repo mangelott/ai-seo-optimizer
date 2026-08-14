@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth');
 const quickScanRoutes = require('./routes/quickScan');
 const billingRoutes = require('./routes/billing');
 const stripeWebhookRoutes = require('./routes/stripeWebhook');
+const domainsRoutes = require('./routes/domains');
 
 const app = express();
 
@@ -22,5 +23,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/quick-scan', quickScanRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/domains', domainsRoutes);
 
 module.exports = app;

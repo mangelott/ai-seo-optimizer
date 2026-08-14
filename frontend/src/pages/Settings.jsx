@@ -24,9 +24,7 @@ export default function Settings() {
       setName(data.name || '');
       setEmail(data.email || '');
     });
-    api.get('/audit').then(({ data }) => {
-      setDomains([...new Set(data.map((a) => a.domain))]);
-    });
+    api.get('/domains').then(({ data }) => setDomains(data));
   }, []);
 
   const initials = (name || email || '?').slice(0, 2).toUpperCase();
@@ -53,8 +51,9 @@ export default function Settings() {
     }
   }
 
-  function removeDomain(domain) {
-    setDomains((d) => d.filter((x) => x !== domain));
+  async function removeDomain(id) {
+    await api.delete(`/domains/${id}`);
+    setDomains((d) => d.filter((x) => x.id !== id));
   }
 
   async function deleteAccount() {
@@ -119,9 +118,9 @@ export default function Settings() {
         <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>{t('settings.monitoredDomains')}</h3>
         <div className={styles.domainsList}>
           {domains.map((d) => (
-            <div className={styles.domainRow} key={d}>
-              <span style={{ fontSize: 14, color: 'var(--text)' }}>{d.replace(/^https?:\/\//, '')}</span>
-              <button className={styles.removeBtn} onClick={() => removeDomain(d)}>
+            <div className={styles.domainRow} key={d.id}>
+              <span style={{ fontSize: 14, color: 'var(--text)' }}>{d.domain.replace(/^https?:\/\//, '')}</span>
+              <button className={styles.removeBtn} onClick={() => removeDomain(d.id)}>
                 {t('settings.remove')}
               </button>
             </div>
