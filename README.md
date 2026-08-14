@@ -99,6 +99,31 @@ Código pronto em `backend/routes/auth.js` (`POST /api/auth/forgot-password`, `P
 
 Sem `RESEND_API_KEY` válida, o pedido de recuperação continua a responder com sucesso (por segurança, nunca revela se o email existe) mas o envio falha silenciosamente (fica registado nos logs do servidor).
 
+## Deploy
+
+### Backend + worker (Render)
+
+Há um blueprint pronto em [`render.yaml`](render.yaml) — cria o backend, o worker, Postgres e Redis, todos ligados entre si.
+
+1. Em [dashboard.render.com](https://dashboard.render.com/) → **New +** → **Blueprint**.
+2. Liga a conta GitHub e escolhe o repositório `ai-seo-optimizer`. O Render deteta o `render.yaml` automaticamente.
+3. No ecrã de review, o Render pede para preencheres as variáveis marcadas `sync: false` (não geradas automaticamente): `FRONTEND_URL`, `ANTHROPIC_API_KEY`, `DATAFORSEO_LOGIN`/`PASSWORD`, `STRIPE_SECRET_KEY`/`WEBHOOK_SECRET`/`PRICE_*`, `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI`, `RESEND_API_KEY`, `EMAIL_FROM`. `DATABASE_URL`, `REDIS_URL` e `JWT_SECRET` ficam tratados automaticamente pelo blueprint.
+4. Aplica o blueprint. O schema da base de dados é aplicado sozinho antes de cada deploy (`preDeployCommand: npm run migrate`).
+5. Depois do primeiro deploy, copia o URL público do serviço `ai-seo-optimizer-api` (algo como `https://ai-seo-optimizer-api.onrender.com`) — vais precisar dele nos passos seguintes.
+
+### Frontend (Vercel)
+
+1. Em [vercel.com](https://vercel.com/) → **Add New → Project** → importa o mesmo repositório.
+2. **Root Directory**: `frontend` (o Vite é detetado automaticamente).
+3. Adiciona a env var `VITE_API_URL` = `https://<o-teu-backend-no-render>.onrender.com/api`.
+4. Deploy. O `vercel.json` já tem o rewrite necessário para o React Router funcionar em qualquer rota (refresh numa página como `/dashboard` sem dar 404).
+
+### Últimos ajustes depois de ambos estarem no ar
+
+- No Render, atualiza `FRONTEND_URL` do backend para o domínio real do Vercel (usado nos redirects do Google OAuth, nos links de recuperação de password, e nas URLs de sucesso/cancelamento do Stripe Checkout).
+- No Stripe Dashboard → Webhooks, atualiza (ou cria) o endpoint para `https://<backend-no-render>/api/billing/webhook` e copia o novo signing secret para `STRIPE_WEBHOOK_SECRET`.
+- No Google Cloud Console, atualiza o **Authorized redirect URI** da credencial OAuth para `https://<backend-no-render>/api/auth/google/callback`, igual ao `GOOGLE_REDIRECT_URI`.
+
 ## Roadmap
 
 - **Fase 1 (atual)**: correções geradas pela IA, prontas a copiar/colar manualmente.
