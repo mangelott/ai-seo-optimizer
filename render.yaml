@@ -57,27 +57,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
-
-  - type: worker
-    name: ai-seo-optimizer-worker
-    runtime: node
-    plan: free
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node jobs/auditWorker.js
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-seo-optimizer-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: ai-seo-optimizer-redis
-          property: connectionString
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: DATAFORSEO_LOGIN
-        sync: false
-      - key: DATAFORSEO_PASSWORD
-        sync: false
+    # Render's free tier doesn't offer a Background Worker service type, so
+    # the audit worker (jobs/auditWorker.js) runs in-process inside server.js
+    # instead of as a separate service. Move it back out to its own `worker`
+    # service here if/when the plan is upgraded and the extra isolation is
+    # worth it.
