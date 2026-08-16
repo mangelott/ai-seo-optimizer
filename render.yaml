@@ -14,8 +14,7 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install
-    preDeployCommand: npm run migrate
+    buildCommand: npm install && npm run migrate
     startCommand: node server.js
     healthCheckPath: /health
     envVars:
