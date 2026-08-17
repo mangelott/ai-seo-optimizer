@@ -119,3 +119,20 @@ CREATE TABLE IF NOT EXISTS team_members (
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (team_id, invited_email)
 );
+
+-- Added after both tables exist (users.team_id predates the teams table in
+-- this file). ON DELETE SET NULL guarantees that whenever a team disappears
+-- — owner account deleted, team explicitly deleted, whatever the code path —
+-- every member's users.team_id is cleared automatically, so nobody is ever
+-- left pointing at a team_id that no longer exists.
+-- Clears any team_id already left dangling (e.g. by a pre-fix deployment)
+-- before adding the constraint, since Postgres validates existing rows
+-- when a FK is added and would otherwise refuse to apply this migration.
+UPDATE users SET team_id = NULL WHERE team_id IS NOT NULL AND team_id NOT IN (SELECT id FROM teams);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_team_id_fkey') THEN
+    ALTER TABLE users ADD CONSTRAINT users_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
+  END IF;
+END $$;

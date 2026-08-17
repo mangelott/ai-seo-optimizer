@@ -241,3 +241,77 @@ test('teams: a member on their own free plan inherits the team owner\'s unlimite
     assert.equal(res.status, 202, `audit ${i} should not be blocked by the free-plan limit`);
   }
 });
+
+test('teams: deleting the owner\'s account tears down the team and frees every member (regression)', async () => {
+  const ownerEmail = uniqueEmail('team-owner-del-owner');
+  const ownerToken = await registerAndLogin(ownerEmail);
+  await setPlan(ownerEmail, 'agency');
+  await json('POST', '/api/teams', { token: ownerToken, body: { name: 'OwnerDelCo' } });
+
+  const memberEmail = uniqueEmail('team-owner-del-member');
+  await registerAndLogin(memberEmail);
+  await json('POST', '/api/teams/invite', { token: ownerToken, body: { email: memberEmail } });
+  const memberToken = await registerAndLogin(memberEmail);
+
+  const memberBefore = await json('GET', '/api/teams/me', { token: memberToken });
+  assert.equal(memberBefore.data.team.name, 'OwnerDelCo');
+
+  const del = await json('DELETE', '/api/auth/me', { token: ownerToken });
+  assert.equal(del.status, 200);
+
+  // The DB-level FK (ON DELETE SET NULL) must have cleared the member's
+  // team_id when the owner's deletion cascaded the team away — not just the
+  // team_members row. Check the raw column directly, not only the API view.
+  const memberRow = await pool.query('SELECT team_id FROM users WHERE email = $1', [memberEmail]);
+  assert.equal(memberRow.rows[0].team_id, null, 'team_id must not be left dangling after the owning team disappears');
+
+  const memberAfter = await json('GET', '/api/teams/me', { token: memberToken });
+  assert.equal(memberAfter.data.team, null);
+});
+
+test('teams: a member freed by owner-deletion can actually join a new team afterwards (regression)', async () => {
+  // This is the real bite of the orphaned-team_id bug: acceptPendingTeamInvites
+  // and the invite auto-link both gate on "team_id IS NULL". If the FK cleanup
+  // above didn't run, this member would be permanently stuck.
+  const ownerEmail = uniqueEmail('team-rejoin-owner');
+  const ownerToken = await registerAndLogin(ownerEmail);
+  await setPlan(ownerEmail, 'agency');
+  await json('POST', '/api/teams', { token: ownerToken, body: { name: 'OldCo' } });
+
+  const memberEmail = uniqueEmail('team-rejoin-member');
+  await registerAndLogin(memberEmail);
+  await json('POST', '/api/teams/invite', { token: ownerToken, body: { email: memberEmail } });
+  await registerAndLogin(memberEmail); // accept
+
+  await json('DELETE', '/api/auth/me', { token: ownerToken });
+
+  const newOwnerEmail = uniqueEmail('team-rejoin-newowner');
+  const newOwnerToken = await registerAndLogin(newOwnerEmail);
+  await setPlan(newOwnerEmail, 'agency');
+  await json('POST', '/api/teams', { token: newOwnerToken, body: { name: 'NewCo' } });
+
+  const invite = await json('POST', '/api/teams/invite', { token: newOwnerToken, body: { email: memberEmail } });
+  assert.equal(invite.status, 201);
+
+  // Existing account with a (now-cleared) null team_id: should auto-link immediately.
+  const memberSelf = await json('GET', '/api/teams/me', { token: await registerAndLogin(memberEmail) });
+  assert.equal(memberSelf.data.team?.name, 'NewCo', 'a previously-orphaned member must be able to join a new team');
+});
+
+test('teams: a non-owner member deleting their own account does not affect the team or other members', async () => {
+  const ownerEmail = uniqueEmail('team-memberdel-owner');
+  const ownerToken = await registerAndLogin(ownerEmail);
+  await setPlan(ownerEmail, 'agency');
+  await json('POST', '/api/teams', { token: ownerToken, body: { name: 'MemberDelCo' } });
+
+  const memberEmail = uniqueEmail('team-memberdel-member');
+  await registerAndLogin(memberEmail);
+  await json('POST', '/api/teams/invite', { token: ownerToken, body: { email: memberEmail } });
+  const memberToken = await registerAndLogin(memberEmail);
+
+  const del = await json('DELETE', '/api/auth/me', { token: memberToken });
+  assert.equal(del.status, 200);
+
+  const ownerSelf = await json('GET', '/api/teams/me', { token: ownerToken });
+  assert.equal(ownerSelf.data.team.name, 'MemberDelCo');
+});

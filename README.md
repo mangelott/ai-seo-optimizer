@@ -53,11 +53,12 @@ docker exec -i ai-seo-optimizer-postgres-1 psql -U user -d ai_seo_optimizer < ba
 
 cd backend
 npm test              # unitários + integração (Postgres/Redis reais, sem chamar DataForSEO/Claude/Stripe)
-npm run test:unit     # só unitários (scoring, parsing do Claude, config de planos) — sem infra
-npm run test:integration   # só o fluxo HTTP completo (auth, limites de plano, quick-scan, billing)
+npm run test:unit     # só unitários (scoring, parsing do Claude, config de planos, plugin WP) — sem infra
+npm run test:integration   # todo o fluxo HTTP (auth, limites de plano, quick-scan, billing, equipas, WordPress, GSC, segurança)
+npm run lint:php       # lint de sintaxe ao plugin WordPress via Docker (não corre com `npm test`)
 ```
 
-Os testes de integração usam `TRUNCATE` nas tabelas antes de correr — não usar a base de dados de produção.
+Os testes de integração usam `TRUNCATE` nas tabelas antes de correr — não usar a base de dados de produção. Correm sempre sequenciais (`--test-concurrency=1`): vários ficheiros fazem `TRUNCATE` no `test.before`, e corrê-los em paralelo provoca falhas aleatórias por um ficheiro apagar dados que outro está a usar a meio.
 
 ## Fluxo
 

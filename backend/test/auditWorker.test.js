@@ -1,0 +1,390 @@
+// Exercises services/auditProcessor.js's processAuditJob directly — deliberately
+// NOT via jobs/auditWorker.js, which wraps this same function in a live BullMQ
+// Worker and would start consuming real jobs off Redis (including stray ones
+// left by other test files) the moment it's required. No BullMQ/Redis queue
+// is involved here at all; every external service (DataForSEO, Claude, Resend,
+// Google Search Console) is mocked via node:test's t.mock.method. This is the
+// only place the score-drop email threshold, the notifyEmail path, and the
+// GSC-fetch-into-gsc_result wiring are actually exercised end-to-end.
+require('dotenv').config();
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const bcrypt = require('bcryptjs');
+const pool = require('../db/pool');
+const { processAuditJob, SCORE_DROP_ALERT_THRESHOLD } = require('../services/auditProcessor');
+const contentAnalysis = require('../services/contentAnalysis');
+const dataforseo = require('../services/dataforseo');
+const claude = require('../services/claude');
+const email = require('../services/email');
+const googleSearchConsole = require('../services/googleSearchConsole');
+
+function uniqueEmail(label) {
+  return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+}
+
+async function createUser(email_) {
+  const hash = await bcrypt.hash('password123', 10);
+  const result = await pool.query('INSERT INTO users (email, password_hash, plan) VALUES ($1, $2, $3) RETURNING id', [
+    email_,
+    hash,
+    'starter',
+  ]);
+  return result.rows[0].id;
+}
+
+async function createAuditRow(userId, domain, { score = null, createdAt = null } = {}) {
+  const result = await pool.query(
+    `INSERT INTO audits (user_id, domain, status, score, created_at)
+     VALUES ($1, $2, 'completed', $3, COALESCE($4, now())) RETURNING id`,
+    [userId, domain, score, createdAt]
+  );
+  return result.rows[0].id;
+}
+
+function stubDefaults(t) {
+  // Sensible no-op-ish defaults so tests only need to override what they care about.
+  t.mock.method(dataforseo, 'getOnPageAudit', async () => ({ statusCode: 200 }));
+  t.mock.method(dataforseo, 'getBacklinkSummary', async () => ({ totalBacklinks: 0 }));
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+  t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
+  t.mock.method(claude, 'generateRecommendations', async () => ([]));
+  t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+  t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+  t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'fake-access-token');
+  t.mock.method(googleSearchConsole, 'querySearchAnalytics', async () => ({ clicks: 1, impressions: 2, ctr: 0.5, position: 3 }));
+}
+
+test.before(async () => {
+  await pool.query(
+    'TRUNCATE quick_scans, subscriptions, audits, monitored_domains, team_members, teams, users RESTART IDENTITY CASCADE'
+  );
+});
+
+test.after(async () => {
+  await pool.end();
+});
+
+test('processAuditJob: computes score from severity penalties and persists the completed audit', async (t) => {
+  stubDefaults(t);
+  t.mock.method(claude, 'generateRecommendations', async () => ([
+    { category: 'content', severity: 'high', title: 'Missing title' }, // -15
+    { category: 'content', severity: 'medium', title: 'Short description' }, // -7
+    { category: 'content', severity: 'low', title: 'Minor issue' }, // -3
+  ]));
+
+  const userId = await createUser(uniqueEmail('worker-score'));
+  const auditId = await createAuditRow(userId, 'https://worker-score-site.com');
+
+  const result = await processAuditJob({ data: { auditId, domain: 'https://worker-score-site.com', categories: ['technical', 'content'] } });
+  assert.equal(result.score, 75); // 100 - 15 - 7 - 3
+
+  const row = await pool.query('SELECT status, score, ai_recommendations FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].score, 75);
+  assert.equal(row.rows[0].ai_recommendations.length, 3);
+});
+
+test('processAuditJob: score never goes below 0 even with many high-severity fixes', async (t) => {
+  stubDefaults(t);
+  const manyFixes = Array.from({ length: 10 }, (_, i) => ({ category: 'content', severity: 'high', title: `Issue ${i}` }));
+  t.mock.method(claude, 'generateRecommendations', async () => manyFixes);
+
+  const userId = await createUser(uniqueEmail('worker-floor'));
+  const auditId = await createAuditRow(userId, 'https://worker-floor-site.com');
+
+  const result = await processAuditJob({ data: { auditId, domain: 'https://worker-floor-site.com' } });
+  assert.equal(result.score, 0);
+});
+
+test('processAuditJob: a score drop of 10+ points sends the score-drop alert, not the audit-ready email', async (t) => {
+  stubDefaults(t);
+  t.mock.method(claude, 'generateRecommendations', async () => ([
+    { category: 'content', severity: 'high', title: 'x' },
+    { category: 'content', severity: 'high', title: 'y' },
+  ])); // score = 70
+
+  const scoreDropMock = t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+  const readyMock = t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+
+  const userEmail = uniqueEmail('worker-drop');
+  const userId = await createUser(userEmail);
+  await createAuditRow(userId, 'https://worker-drop-site.com', { score: 85, createdAt: new Date(Date.now() - 60000) });
+  const auditId = await createAuditRow(userId, 'https://worker-drop-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-drop-site.com' } });
+
+  assert.equal(scoreDropMock.mock.callCount(), 1);
+  assert.equal(readyMock.mock.callCount(), 0);
+  const call = scoreDropMock.mock.calls[0];
+  assert.equal(call.arguments[0], userEmail);
+  assert.equal(call.arguments[1].previousScore, 85);
+  assert.equal(call.arguments[1].score, 70);
+});
+
+test('processAuditJob: a score drop under the threshold sends no alert at all', async (t) => {
+  stubDefaults(t);
+  t.mock.method(claude, 'generateRecommendations', async () => ([{ category: 'content', severity: 'low', title: 'x' }])); // score = 97
+
+  const scoreDropMock = t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+  const readyMock = t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+
+  const userId = await createUser(uniqueEmail('worker-smalldrop'));
+  await createAuditRow(userId, 'https://worker-smalldrop-site.com', { score: 100, createdAt: new Date(Date.now() - 60000) });
+  const auditId = await createAuditRow(userId, 'https://worker-smalldrop-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-smalldrop-site.com' } });
+
+  assert.equal(scoreDropMock.mock.callCount(), 0);
+  assert.equal(readyMock.mock.callCount(), 0);
+});
+
+test('processAuditJob: a score drop of exactly the threshold (10) still triggers the alert (boundary)', async (t) => {
+  stubDefaults(t);
+  // medium (-7) + low (-3) = -10 penalty, so a perfect previous score of 100
+  // drops to exactly 90 — a drop of precisely SCORE_DROP_ALERT_THRESHOLD.
+  t.mock.method(claude, 'generateRecommendations', async () => ([
+    { category: 'content', severity: 'medium', title: 'x' },
+    { category: 'content', severity: 'low', title: 'y' },
+  ]));
+
+  const scoreDropMock = t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+
+  const userId = await createUser(uniqueEmail('worker-boundary'));
+  await createAuditRow(userId, 'https://worker-boundary-site.com', { score: 100, createdAt: new Date(Date.now() - 60000) });
+  const auditId = await createAuditRow(userId, 'https://worker-boundary-site.com');
+
+  const result = await processAuditJob({ data: { auditId, domain: 'https://worker-boundary-site.com' } });
+
+  assert.equal(result.previousScore - result.score, SCORE_DROP_ALERT_THRESHOLD, 'test setup sanity check: drop must equal the threshold exactly');
+  assert.equal(scoreDropMock.mock.callCount(), 1, 'a drop exactly at the threshold must still alert (>=, not >)');
+});
+
+test('processAuditJob: notifyEmail sends the audit-ready email when there is no score drop', async (t) => {
+  stubDefaults(t);
+  const readyMock = t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+  const scoreDropMock = t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+
+  const userEmail = uniqueEmail('worker-notify');
+  const userId = await createUser(userEmail);
+  const auditId = await createAuditRow(userId, 'https://worker-notify-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-notify-site.com', notifyEmail: true } });
+
+  assert.equal(readyMock.mock.callCount(), 1);
+  assert.equal(readyMock.mock.calls[0].arguments[0], userEmail);
+  assert.equal(scoreDropMock.mock.callCount(), 0);
+});
+
+test('processAuditJob: without notifyEmail and without a score drop, no email is sent at all', async (t) => {
+  stubDefaults(t);
+  const readyMock = t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+  const scoreDropMock = t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
+
+  const userId = await createUser(uniqueEmail('worker-noemail'));
+  const auditId = await createAuditRow(userId, 'https://worker-noemail-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-noemail-site.com', notifyEmail: false } });
+
+  assert.equal(readyMock.mock.callCount(), 0);
+  assert.equal(scoreDropMock.mock.callCount(), 0);
+});
+
+test('processAuditJob: a failing email provider is swallowed — the audit still completes', async (t) => {
+  stubDefaults(t);
+  t.mock.method(email, 'sendAuditReadyEmail', async () => {
+    throw new Error('Resend is down');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-emailfail'));
+  const auditId = await createAuditRow(userId, 'https://worker-emailfail-site.com');
+
+  await assert.doesNotReject(
+    processAuditJob({ data: { auditId, domain: 'https://worker-emailfail-site.com', notifyEmail: true } })
+  );
+
+  const row = await pool.query('SELECT status FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+});
+
+test('processAuditJob: fetches and persists GSC data when the domain is linked and the user is connected', async (t) => {
+  stubDefaults(t);
+  const refreshMock = t.mock.method(googleSearchConsole, 'refreshAccessToken', async (token) => {
+    assert.equal(token, 'a-refresh-token');
+    return 'an-access-token';
+  });
+  const queryMock = t.mock.method(googleSearchConsole, 'querySearchAnalytics', async (accessToken, siteUrl) => {
+    assert.equal(accessToken, 'an-access-token');
+    assert.equal(siteUrl, 'https://gsc-property.example/');
+    return { clicks: 42, impressions: 100, ctr: 0.42, position: 4.5 };
+  });
+
+  const userId = await createUser(uniqueEmail('worker-gsc'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1 WHERE id = $2', ['a-refresh-token', userId]);
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-gsc-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-gsc-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-gsc-site.com' } });
+
+  assert.equal(refreshMock.mock.callCount(), 1);
+  assert.equal(queryMock.mock.callCount(), 1);
+
+  const row = await pool.query('SELECT gsc_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].gsc_result, { clicks: 42, impressions: 100, ctr: 0.42, position: 4.5 });
+});
+
+test('processAuditJob: skips GSC entirely when the domain has no linked property', async (t) => {
+  stubDefaults(t);
+  const refreshMock = t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'x');
+  const queryMock = t.mock.method(googleSearchConsole, 'querySearchAnalytics', async () => ({}));
+
+  const userId = await createUser(uniqueEmail('worker-nogsc'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1 WHERE id = $2', ['a-refresh-token', userId]);
+  // Domain exists but gsc_site_url is not set.
+  await pool.query('INSERT INTO monitored_domains (user_id, domain) VALUES ($1, $2)', [userId, 'https://worker-nogsc-site.com']);
+  const auditId = await createAuditRow(userId, 'https://worker-nogsc-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-nogsc-site.com' } });
+
+  assert.equal(refreshMock.mock.callCount(), 0);
+  assert.equal(queryMock.mock.callCount(), 0);
+
+  const row = await pool.query('SELECT gsc_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].gsc_result, null);
+});
+
+test('processAuditJob: skips GSC when the domain is linked but the user has since disconnected (no refresh token)', async (t) => {
+  stubDefaults(t);
+  const refreshMock = t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'x');
+
+  const userId = await createUser(uniqueEmail('worker-gscdisconnected'));
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-gscdisc-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-gscdisc-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-gscdisc-site.com' } });
+
+  assert.equal(refreshMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT gsc_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].gsc_result, null);
+});
+
+test('processAuditJob: a GSC fetch failure is swallowed — gsc_result is null and the audit still completes', async (t) => {
+  stubDefaults(t);
+  t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => {
+    throw new Error('invalid_grant');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-gscfail'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1 WHERE id = $2', ['a-refresh-token', userId]);
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-gscfail-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-gscfail-site.com');
+
+  await assert.doesNotReject(processAuditJob({ data: { auditId, domain: 'https://worker-gscfail-site.com' } }));
+
+  const row = await pool.query('SELECT status, gsc_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].gsc_result, null);
+});
+
+test('processAuditJob: only calls the services for categories included in the plan', async (t) => {
+  stubDefaults(t);
+  const technicalMock = t.mock.method(dataforseo, 'getOnPageAudit', async () => ({}));
+  const backlinksMock = t.mock.method(dataforseo, 'getBacklinkSummary', async () => ({}));
+  const contentMock = t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'T' }));
+  const keywordsMock = t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+
+  const userId = await createUser(uniqueEmail('worker-categories'));
+  const auditId = await createAuditRow(userId, 'https://worker-categories-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-categories-site.com', categories: ['content'] } });
+
+  assert.equal(contentMock.mock.callCount(), 1);
+  assert.equal(technicalMock.mock.callCount(), 0, 'technical is not in the plan\'s categories');
+  assert.equal(backlinksMock.mock.callCount(), 0, 'backlinks is not in the plan\'s categories');
+  assert.equal(keywordsMock.mock.callCount(), 0, 'keywords is not in the plan\'s categories');
+});
+
+test('processAuditJob: fetches keyword ideas from the content title only when "keywords" is an included category', async (t) => {
+  stubDefaults(t);
+  t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Best Coffee Shop' }));
+  const keywordsMock = t.mock.method(dataforseo, 'getKeywordIdeas', async (title) => {
+    assert.equal(title, 'Best Coffee Shop');
+    return [{ keyword: 'coffee' }];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-keywords'));
+  const auditId = await createAuditRow(userId, 'https://worker-keywords-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-keywords-site.com', categories: ['content', 'keywords'] },
+  });
+
+  assert.equal(keywordsMock.mock.callCount(), 1);
+  const row = await pool.query('SELECT keyword_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].keyword_result, [{ keyword: 'coffee' }]);
+});
+
+test('processAuditJob: a Claude failure degrades to zero recommendations and a perfect score, without crashing', async (t) => {
+  stubDefaults(t);
+  t.mock.method(claude, 'generateRecommendations', async () => {
+    throw new Error('anthropic API down');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-claudefail'));
+  const auditId = await createAuditRow(userId, 'https://worker-claudefail-site.com');
+
+  const result = await processAuditJob({ data: { auditId, domain: 'https://worker-claudefail-site.com' } });
+  assert.equal(result.score, 100);
+
+  const row = await pool.query('SELECT status, ai_recommendations FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.deepEqual(row.rows[0].ai_recommendations, []);
+});
+
+test('processAuditJob: a DataForSEO failure for one category does not block the others', async (t) => {
+  stubDefaults(t);
+  t.mock.method(dataforseo, 'getOnPageAudit', async () => {
+    throw new Error('DataForSEO timeout');
+  });
+  t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Still works' }));
+
+  const userId = await createUser(uniqueEmail('worker-partialfail'));
+  const auditId = await createAuditRow(userId, 'https://worker-partialfail-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-partialfail-site.com', categories: ['technical', 'content'] },
+  });
+
+  const row = await pool.query('SELECT status, technical_result, content_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].technical_result, null);
+  assert.deepEqual(row.rows[0].content_result, { title: 'Still works' });
+});
+
+test('processAuditJob: does not crash and sends no email when the audit\'s user_id is missing', async (t) => {
+  stubDefaults(t);
+  const readyMock = t.mock.method(email, 'sendAuditReadyEmail', async () => {});
+
+  // No real user backing this audit — simulates a data-integrity edge case
+  // rather than relying on a foreign key we'd have to bypass.
+  const orphanResult = await pool.query(
+    `INSERT INTO audits (user_id, domain, status) VALUES (NULL, 'https://worker-orphan-site.com', 'pending') RETURNING id`
+  );
+  const auditId = orphanResult.rows[0].id;
+
+  await assert.doesNotReject(
+    processAuditJob({ data: { auditId, domain: 'https://worker-orphan-site.com', notifyEmail: true } })
+  );
+  assert.equal(readyMock.mock.callCount(), 0);
+
+  const row = await pool.query('SELECT status FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+});

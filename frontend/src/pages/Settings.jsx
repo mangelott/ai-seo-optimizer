@@ -252,12 +252,12 @@ export default function Settings() {
         <form onSubmit={saveProfile}>
           <div className={styles.grid2}>
             <div>
-              <Label>{t('settings.name')}</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="profile-name">{t('settings.name')}</Label>
+              <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
-              <Label>{t('settings.email')}</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Label htmlFor="profile-email">{t('settings.email')}</Label>
+              <Input id="profile-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
           </div>
           <Button type="submit" size="sm" style={{ marginTop: 20 }}>
@@ -272,12 +272,12 @@ export default function Settings() {
         <form onSubmit={updatePassword}>
           <div className={styles.grid2}>
             <div>
-              <Label>{t('settings.currentPassword')}</Label>
-              <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+              <Label htmlFor="current-password">{t('settings.currentPassword')}</Label>
+              <Input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
             </div>
             <div>
-              <Label>{t('settings.newPassword')}</Label>
-              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} />
+              <Label htmlFor="new-password">{t('settings.newPassword')}</Label>
+              <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} />
             </div>
           </div>
           <Button variant="secondary" size="sm" type="submit" style={{ marginTop: 20 }}>
@@ -328,8 +328,9 @@ export default function Settings() {
               {d.recurring_enabled && (
                 <div className={styles.recurringOptions}>
                   <div>
-                    <Label>{t('settings.recurringInterval')}</Label>
+                    <Label htmlFor={`recurring-interval-${d.id}`}>{t('settings.recurringInterval')}</Label>
                     <Input
+                      id={`recurring-interval-${d.id}`}
                       type="number"
                       min={1}
                       value={d.recurring_interval_days || DEFAULT_INTERVAL_DAYS}
@@ -338,8 +339,9 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <Label>{t('settings.recurringDelivery')}</Label>
+                    <Label htmlFor={`recurring-delivery-${d.id}`}>{t('settings.recurringDelivery')}</Label>
                     <select
+                      id={`recurring-delivery-${d.id}`}
                       className={styles.select}
                       value={d.recurring_delivery || DEFAULT_DELIVERY}
                       onChange={(e) => changeRecurringDelivery(d, e.target.value)}
@@ -353,8 +355,9 @@ export default function Settings() {
               {gscConnected && (
                 <div className={styles.recurringRow}>
                   <div style={{ width: '100%' }}>
-                    <Label>{t('settings.gscLinkProperty')}</Label>
+                    <Label htmlFor={`gsc-property-${d.id}`}>{t('settings.gscLinkProperty')}</Label>
                     <select
+                      id={`gsc-property-${d.id}`}
                       className={styles.select}
                       style={{ width: '100%' }}
                       value={d.gsc_site_url || ''}
@@ -406,23 +409,26 @@ export default function Settings() {
                       </p>
                       <div className={styles.recurringOptions} style={{ marginTop: 10, flexWrap: 'wrap' }}>
                         <div>
-                          <Label>{t('settings.wpUrl')}</Label>
+                          <Label htmlFor={`wp-url-${d.id}`}>{t('settings.wpUrl')}</Label>
                           <Input
+                            id={`wp-url-${d.id}`}
                             placeholder="https://yoursite.com"
                             value={wpForms[d.id]?.wpUrl || ''}
                             onChange={(e) => updateWpForm(d.id, 'wpUrl', e.target.value)}
                           />
                         </div>
                         <div>
-                          <Label>{t('settings.wpUsername')}</Label>
+                          <Label htmlFor={`wp-username-${d.id}`}>{t('settings.wpUsername')}</Label>
                           <Input
+                            id={`wp-username-${d.id}`}
                             value={wpForms[d.id]?.wpUsername || ''}
                             onChange={(e) => updateWpForm(d.id, 'wpUsername', e.target.value)}
                           />
                         </div>
                         <div>
-                          <Label>{t('settings.wpAppPassword')}</Label>
+                          <Label htmlFor={`wp-app-password-${d.id}`}>{t('settings.wpAppPassword')}</Label>
                           <Input
+                            id={`wp-app-password-${d.id}`}
                             type="password"
                             value={wpForms[d.id]?.wpAppPassword || ''}
                             onChange={(e) => updateWpForm(d.id, 'wpAppPassword', e.target.value)}
@@ -457,8 +463,8 @@ export default function Settings() {
               <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.teamDesc')}</p>
               <form onSubmit={createTeam} className={styles.recurringOptions} style={{ marginTop: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <Label>{t('settings.teamName')}</Label>
-                  <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} required />
+                  <Label htmlFor="team-name">{t('settings.teamName')}</Label>
+                  <Input id="team-name" value={teamName} onChange={(e) => setTeamName(e.target.value)} required />
                 </div>
                 <Button type="submit" size="sm" style={{ alignSelf: 'flex-end' }} disabled={teamBusy}>
                   {t('settings.teamCreate')}
@@ -489,8 +495,8 @@ export default function Settings() {
                 <>
                   <form onSubmit={inviteMember} className={styles.recurringOptions} style={{ marginTop: 16 }}>
                     <div style={{ flex: 1 }}>
-                      <Label>{t('settings.teamInviteEmail')}</Label>
-                      <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required />
+                      <Label htmlFor="team-invite-email">{t('settings.teamInviteEmail')}</Label>
+                      <Input id="team-invite-email" type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required />
                     </div>
                     <Button type="submit" size="sm" style={{ alignSelf: 'flex-end' }} disabled={teamBusy}>
                       {t('settings.teamInvite')}
@@ -503,16 +509,18 @@ export default function Settings() {
                       <Label>{t('settings.teamWhiteLabel')}</Label>
                       <div className={styles.recurringOptions} style={{ marginTop: 6, flexWrap: 'wrap' }}>
                         <div>
-                          <Label>{t('settings.teamLogoUrl')}</Label>
+                          <Label htmlFor="team-logo-url">{t('settings.teamLogoUrl')}</Label>
                           <Input
+                            id="team-logo-url"
                             placeholder="https://yourbrand.com/logo.png"
                             defaultValue={team.white_label_logo_url || ''}
                             onBlur={(e) => updateWhiteLabel('whiteLabelLogoUrl', e.target.value)}
                           />
                         </div>
                         <div>
-                          <Label>{t('settings.teamBrandColor')}</Label>
+                          <Label htmlFor="team-brand-color">{t('settings.teamBrandColor')}</Label>
                           <Input
+                            id="team-brand-color"
                             type="color"
                             defaultValue={team.white_label_brand_color || '#5b4fd6'}
                             onBlur={(e) => updateWhiteLabel('whiteLabelBrandColor', e.target.value)}

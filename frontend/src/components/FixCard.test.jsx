@@ -71,9 +71,57 @@ describe('FixCard', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SAMPLE_FIX.suggestedFix);
   });
 
-  it('the "Apply automatically" button is always disabled (phase 2 placeholder)', () => {
-    render(<FixCard fix={SAMPLE_FIX} index={0} expanded onToggle={() => {}} />);
+  it('shows the disabled "Coming soon" placeholder when the fix has no wpField at all', () => {
+    render(<FixCard fix={SAMPLE_FIX} index={0} expanded onToggle={() => {}} autoFixAvailable />);
     expect(screen.getByText('Apply automatically').closest('button')).toBeDisabled();
+    expect(screen.getByText('Coming soon')).toBeInTheDocument();
+  });
+
+  it('shows a disabled "Connect WordPress" placeholder when the fix is auto-fixable but the domain has no WordPress connection', () => {
+    const wpFix = { ...SAMPLE_FIX, wpField: 'post_title', wpValue: 'Better title' };
+    render(<FixCard fix={wpFix} index={0} expanded onToggle={() => {}} autoFixAvailable={false} />);
+    expect(screen.getByText('Apply automatically').closest('button')).toBeDisabled();
+    expect(screen.getByText('Connect WordPress')).toBeInTheDocument();
+  });
+
+  it('shows a real, enabled "Apply automatically" button when the fix has a wpField and the domain has auto-fix enabled', () => {
+    const wpFix = { ...SAMPLE_FIX, wpField: 'post_title', wpValue: 'Better title' };
+    render(<FixCard fix={wpFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={vi.fn()} />);
+    expect(screen.getByText('Apply automatically').closest('button')).toBeEnabled();
+  });
+
+  it('calls onApply, shows an "Applying…" state, and does not toggle the card when clicked', async () => {
+    const onToggle = vi.fn();
+    let resolveApply;
+    const onApply = vi.fn(() => new Promise((resolve) => { resolveApply = resolve; }));
+    const wpFix = { ...SAMPLE_FIX, wpField: 'post_title', wpValue: 'Better title' };
+    render(<FixCard fix={wpFix} index={0} expanded onToggle={onToggle} autoFixAvailable onApply={onApply} />);
+
+    fireEvent.click(screen.getByText('Apply automatically'));
+    expect(onApply).toHaveBeenCalledOnce();
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(await screen.findByText('Applying…')).toBeInTheDocument();
+
+    resolveApply();
+    await screen.findByText('Apply automatically');
+  });
+
+  it('shows "Applied ✓" instead of a button once fix.applied is true, with no way to re-trigger it', () => {
+    const onApply = vi.fn();
+    const appliedFix = { ...SAMPLE_FIX, wpField: 'post_title', wpValue: 'Better title', applied: true };
+    render(<FixCard fix={appliedFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={onApply} />);
+    expect(screen.getByText('Applied ✓')).toBeInTheDocument();
+    expect(screen.queryByText('Apply automatically')).not.toBeInTheDocument();
+  });
+
+  it('shows an inline error and resets to the enabled button when onApply rejects', async () => {
+    const onApply = vi.fn().mockRejectedValue(new Error('network error'));
+    const wpFix = { ...SAMPLE_FIX, wpField: 'post_title', wpValue: 'Better title' };
+    render(<FixCard fix={wpFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={onApply} />);
+
+    fireEvent.click(screen.getByText('Apply automatically'));
+    expect(await screen.findByText("Couldn't apply this fix. Check your WordPress connection and try again.")).toBeInTheDocument();
+    expect(screen.getByText('Apply automatically').closest('button')).toBeEnabled();
   });
 
   it('clicking the copy button does not also toggle the card (stopPropagation)', () => {
