@@ -49,7 +49,7 @@ function uniqueEmail(label) {
 
 test.before(async () => {
   await pool.query(
-    'TRUNCATE quick_scans, subscriptions, audits, monitored_domains, users RESTART IDENTITY CASCADE'
+    'TRUNCATE quick_scans, subscriptions, audits, monitored_domains, team_members, teams, users RESTART IDENTITY CASCADE'
   );
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
@@ -327,6 +327,43 @@ test('password reset: expired or garbage tokens are rejected', async () => {
   assert.equal(garbage.status, 400);
 });
 
+test('shareable report: toggling sharing exposes a public, read-only copy and hides it again on unshare', async () => {
+  const token = await registerAndLogin(uniqueEmail('sharer'));
+  const created = await json('POST', '/api/audit', { token, body: { domain: 'https://shareable-site.com' } });
+  const auditId = created.data.auditId;
+
+  const notSharedYet = await json('GET', `/api/audit/${auditId}`, { token });
+  const publicBeforeShare = await json('GET', `/api/public/report/${notSharedYet.data.share_token}`);
+  assert.equal(publicBeforeShare.status, 404, 'a report must not be public before it is explicitly shared');
+
+  const shared = await json('PATCH', `/api/audit/${auditId}/share`, { token, body: { shared: true } });
+  assert.equal(shared.status, 200);
+  assert.equal(shared.data.is_shared, true);
+  assert.ok(shared.data.share_token);
+
+  const publicAfterShare = await json('GET', `/api/public/report/${shared.data.share_token}`);
+  assert.equal(publicAfterShare.status, 200);
+  assert.equal(publicAfterShare.data.domain, 'https://shareable-site.com');
+
+  const unshared = await json('PATCH', `/api/audit/${auditId}/share`, { token, body: { shared: false } });
+  assert.equal(unshared.data.is_shared, false);
+
+  const publicAfterUnshare = await json('GET', `/api/public/report/${shared.data.share_token}`);
+  assert.equal(publicAfterUnshare.status, 404, 'unsharing must revoke public access immediately');
+});
+
+test('shareable report: only the owner can toggle sharing', async () => {
+  const ownerToken = await registerAndLogin(uniqueEmail('share-owner'));
+  const created = await json('POST', '/api/audit', { token: ownerToken, body: { domain: 'https://someone-elses-site.com' } });
+
+  const intruderToken = await registerAndLogin(uniqueEmail('share-intruder'));
+  const stolen = await json('PATCH', `/api/audit/${created.data.auditId}/share`, {
+    token: intruderToken,
+    body: { shared: true },
+  });
+  assert.equal(stolen.status, 404);
+});
+
 test('monitored domains: auditing a domain registers it, and removal really persists', async () => {
   const token = await registerAndLogin(uniqueEmail('domains'));
 
@@ -348,6 +385,110 @@ test('monitored domains: auditing a domain registers it, and removal really pers
 
   const afterRemoval = await json('GET', '/api/domains', { token });
   assert.deepEqual(afterRemoval.data, []);
+});
+
+test('recurring audits: enabling requires a valid interval and delivery preference', async () => {
+  const token = await registerAndLogin(uniqueEmail('recurring-settings'));
+  await json('POST', '/api/audit', { token, body: { domain: 'https://recurring-site.com' } });
+  const [domain] = (await json('GET', '/api/domains', { token })).data;
+
+  const missingInterval = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { recurringEnabled: true, recurringDelivery: 'email' },
+  });
+  assert.equal(missingInterval.status, 400);
+
+  const zeroInterval = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { recurringEnabled: true, recurringIntervalDays: 0, recurringDelivery: 'email' },
+  });
+  assert.equal(zeroInterval.status, 400);
+
+  const badDelivery = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { recurringEnabled: true, recurringIntervalDays: 7, recurringDelivery: 'carrier_pigeon' },
+  });
+  assert.equal(badDelivery.status, 400);
+});
+
+test('recurring audits: enabling, updating, and disabling persist correctly and are owner-scoped', async () => {
+  const token = await registerAndLogin(uniqueEmail('recurring-owner'));
+  await json('POST', '/api/audit', { token, body: { domain: 'https://recurring-owner-site.com' } });
+  const [domain] = (await json('GET', '/api/domains', { token })).data;
+
+  const enabled = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { recurringEnabled: true, recurringIntervalDays: 7, recurringDelivery: 'email' },
+  });
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.data.recurring_enabled, true);
+  assert.equal(enabled.data.recurring_interval_days, 7);
+  assert.equal(enabled.data.recurring_delivery, 'email');
+
+  const otherToken = await registerAndLogin(uniqueEmail('recurring-intruder'));
+  const stolen = await json('PATCH', `/api/domains/${domain.id}`, {
+    token: otherToken,
+    body: { recurringEnabled: false },
+  });
+  assert.equal(stolen.status, 404, 'cannot update another user\'s recurring settings');
+
+  const disabled = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { recurringEnabled: false },
+  });
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.data.recurring_enabled, false);
+  assert.equal(disabled.data.recurring_interval_days, 7, 'disabling should not wipe the previously chosen interval');
+});
+
+test('google search console: status reflects connection, and disconnect clears it', async () => {
+  const email = uniqueEmail('gsc-status');
+  const token = await registerAndLogin(email);
+
+  const before = await json('GET', '/api/gsc/status', { token });
+  assert.equal(before.status, 200);
+  assert.equal(before.data.connected, false);
+
+  await pool.query(
+    `UPDATE users SET gsc_access_token = 'fake-access', gsc_refresh_token = 'fake-refresh', gsc_connected_at = now()
+     WHERE email = $1`,
+    [email]
+  );
+
+  const after = await json('GET', '/api/gsc/status', { token });
+  assert.equal(after.data.connected, true);
+
+  const disconnect = await json('DELETE', '/api/gsc/disconnect', { token });
+  assert.equal(disconnect.status, 200);
+
+  const afterDisconnect = await json('GET', '/api/gsc/status', { token });
+  assert.equal(afterDisconnect.data.connected, false);
+});
+
+test('google search console: /sites requires a connected account', async () => {
+  const token = await registerAndLogin(uniqueEmail('gsc-sites'));
+  const res = await json('GET', '/api/gsc/sites', { token });
+  assert.equal(res.status, 400);
+});
+
+test('google search console: linking a site to a domain is owner-scoped', async () => {
+  const token = await registerAndLogin(uniqueEmail('gsc-link'));
+  await json('POST', '/api/audit', { token, body: { domain: 'https://gsc-linked-site.com' } });
+  const [domain] = (await json('GET', '/api/domains', { token })).data;
+
+  const linked = await json('PATCH', `/api/gsc/domains/${domain.id}`, {
+    token,
+    body: { siteUrl: 'https://gsc-linked-site.com/' },
+  });
+  assert.equal(linked.status, 200);
+  assert.equal(linked.data.gsc_site_url, 'https://gsc-linked-site.com/');
+
+  const otherToken = await registerAndLogin(uniqueEmail('gsc-link-intruder'));
+  const stolen = await json('PATCH', `/api/gsc/domains/${domain.id}`, {
+    token: otherToken,
+    body: { siteUrl: 'https://stolen.com/' },
+  });
+  assert.equal(stolen.status, 404);
 });
 
 test('account deletion cascades and revokes access', async () => {

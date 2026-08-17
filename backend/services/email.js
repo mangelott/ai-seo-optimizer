@@ -15,4 +15,34 @@ async function sendPasswordResetEmail(to, resetUrl) {
   });
 }
 
-module.exports = { sendPasswordResetEmail };
+function domainLabel(domain) {
+  return domain.replace(/^https?:\/\//, '');
+}
+
+async function sendAuditReadyEmail(to, { domain, score, reportUrl }) {
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: `Your scheduled SEO audit for ${domainLabel(domain)} is ready (score: ${score})`,
+    html: `
+      <p>Your scheduled audit for <strong>${domainLabel(domain)}</strong> just finished.</p>
+      <p>Score: <strong>${score} / 100</strong></p>
+      <p><a href="${reportUrl}">View the full report</a></p>
+    `,
+  });
+}
+
+async function sendScoreDropAlertEmail(to, { domain, previousScore, score, reportUrl }) {
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: `⚠️ SEO score dropped for ${domainLabel(domain)}: ${previousScore} → ${score}`,
+    html: `
+      <p>Heads up — the SEO score for <strong>${domainLabel(domain)}</strong> dropped from
+      <strong>${previousScore}</strong> to <strong>${score}</strong> since the last audit.</p>
+      <p><a href="${reportUrl}">See what changed</a></p>
+    `,
+  });
+}
+
+module.exports = { sendPasswordResetEmail, sendAuditReadyEmail, sendScoreDropAlertEmail };

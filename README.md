@@ -99,6 +99,16 @@ Código pronto em `backend/routes/auth.js` (`POST /api/auth/forgot-password`, `P
 
 Sem `RESEND_API_KEY` válida, o pedido de recuperação continua a responder com sucesso (por segurança, nunca revela se o email existe) mas o envio falha silenciosamente (fica registado nos logs do servidor).
 
+## Google Search Console
+
+Código pronto em `backend/routes/gsc.js` e `backend/services/googleSearchConsole.js` — liga a conta Google do utilizador (scope `webmasters.readonly`) e mostra cliques, impressões, CTR e posição média reais junto de cada auditoria. É um fluxo OAuth separado do login com Google (scopes e redirect URI diferentes), mas pode usar o mesmo Client ID/Secret. Para ativar:
+
+1. No mesmo projeto do Google Cloud Console usado para o login, vai a **APIs & Services → Library** e ativa a **Google Search Console API**.
+2. Em **APIs & Services → Credentials**, na credencial OAuth já existente, adiciona em **Authorized redirect URIs**: `http://localhost:4000/api/gsc/callback` (dev) e o equivalente em produção (`https://<teu-backend>/api/gsc/callback`).
+3. Preenche `GSC_REDIRECT_URI` no `.env` com esse mesmo URI (usa `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` já existentes, não precisa de credenciais novas).
+
+Sem isto configurado, o botão "Ligar Google Search Console" nas Definições leva a um ecrã de erro do próprio Google — não quebra o resto da app. Depois de ligado, cada domínio monitorizado pode ser associado a uma propriedade verificada da Search Console (o utilizador só vê propriedades onde já tem acesso confirmado na própria conta Google).
+
 ## Deploy
 
 ### Backend + worker (Render)
@@ -107,7 +117,7 @@ Há um blueprint pronto em [`render.yaml`](render.yaml) — cria o backend, o wo
 
 1. Em [dashboard.render.com](https://dashboard.render.com/) → **New +** → **Blueprint**.
 2. Liga a conta GitHub e escolhe o repositório `ai-seo-optimizer`. O Render deteta o `render.yaml` automaticamente.
-3. No ecrã de review, o Render pede para preencheres as variáveis marcadas `sync: false` (não geradas automaticamente): `FRONTEND_URL`, `ANTHROPIC_API_KEY`, `DATAFORSEO_LOGIN`/`PASSWORD`, `STRIPE_SECRET_KEY`/`WEBHOOK_SECRET`/`PRICE_*`, `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI`, `RESEND_API_KEY`, `EMAIL_FROM`. `DATABASE_URL`, `REDIS_URL` e `JWT_SECRET` ficam tratados automaticamente pelo blueprint.
+3. No ecrã de review, o Render pede para preencheres as variáveis marcadas `sync: false` (não geradas automaticamente): `FRONTEND_URL`, `ANTHROPIC_API_KEY`, `DATAFORSEO_LOGIN`/`PASSWORD`, `STRIPE_SECRET_KEY`/`WEBHOOK_SECRET`/`PRICE_*`, `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI`, `GSC_REDIRECT_URI`, `RESEND_API_KEY`, `EMAIL_FROM`. `DATABASE_URL`, `REDIS_URL` e `JWT_SECRET` ficam tratados automaticamente pelo blueprint.
 4. Aplica o blueprint. O schema da base de dados é aplicado sozinho antes de cada deploy (`preDeployCommand: npm run migrate`).
 5. Depois do primeiro deploy, copia o URL público do serviço `ai-seo-optimizer-api` (algo como `https://ai-seo-optimizer-api.onrender.com`) — vais precisar dele nos passos seguintes.
 
@@ -122,7 +132,7 @@ Há um blueprint pronto em [`render.yaml`](render.yaml) — cria o backend, o wo
 
 - No Render, atualiza `FRONTEND_URL` do backend para o domínio real do Vercel (usado nos redirects do Google OAuth, nos links de recuperação de password, e nas URLs de sucesso/cancelamento do Stripe Checkout).
 - No Stripe Dashboard → Webhooks, atualiza (ou cria) o endpoint para `https://<backend-no-render>/api/billing/webhook` e copia o novo signing secret para `STRIPE_WEBHOOK_SECRET`.
-- No Google Cloud Console, atualiza o **Authorized redirect URI** da credencial OAuth para `https://<backend-no-render>/api/auth/google/callback`, igual ao `GOOGLE_REDIRECT_URI`.
+- No Google Cloud Console, atualiza o **Authorized redirect URI** da credencial OAuth para `https://<backend-no-render>/api/auth/google/callback`, igual ao `GOOGLE_REDIRECT_URI` (e, se a Search Console estiver ativa, adiciona também `https://<backend-no-render>/api/gsc/callback`, igual ao `GSC_REDIRECT_URI`).
 
 ## Roadmap
 

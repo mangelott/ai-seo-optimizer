@@ -7,6 +7,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AuthCallback from './pages/AuthCallback';
 import QuickScanTeaser from './pages/QuickScanTeaser';
+import PublicReport from './pages/PublicReport';
 import Dashboard from './pages/Dashboard';
 import AuditProcessing from './pages/AuditProcessing';
 import Report from './pages/Report';
@@ -31,6 +32,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/quick-scan/:id" element={<QuickScanTeaser />} />
+        <Route path="/report/:token" element={<PublicReport />} />
 
         <Route
           path="/dashboard"

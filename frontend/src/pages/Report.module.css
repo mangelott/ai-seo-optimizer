@@ -53,6 +53,40 @@
   gap: 10px;
 }
 
+.gscRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.gscStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--surface2);
+  border-radius: 12px;
+}
+
+.gscValue {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.gscLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 560px) {
+  .gscRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .impactBarWrap {
   margin-bottom: 24px;
 }
@@ -113,4 +147,53 @@
   padding: 24px;
   font-size: 14px;
   color: var(--text-muted);
+}
+
+.shareBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: -14px 0 24px;
+  flex-wrap: wrap;
+}
+
+.shareLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+
+.shareInput {
+  flex: 1;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: 'Geist Mono', monospace;
+}
+
+.publicWrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 40px;
+}
+
+.publicBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--accent);
+  color: white;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
 }

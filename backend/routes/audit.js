@@ -1,8 +1,8 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { auditQueue } = require('../jobs/queue');
 const { requireAuth } = require('../middleware/auth');
 const { enforcePlanLimit } = require('../middleware/planLimit');
+const { createAudit } = require('../services/auditRunner');
 
 const router = express.Router();
 
@@ -10,29 +10,12 @@ router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
   const { domain, language } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
 
-  const result = await pool.query(
-    'INSERT INTO audits (user_id, domain) VALUES ($1, $2) RETURNING id',
-    [req.user.id, domain]
-  );
-  const auditId = result.rows[0].id;
-
-  await pool.query(
-    'INSERT INTO monitored_domains (user_id, domain) VALUES ($1, $2) ON CONFLICT (user_id, domain) DO NOTHING',
-    [req.user.id, domain]
-  );
-
-  if (req.planKey === 'free') {
-    await pool.query(
-      'UPDATE users SET lifetime_free_audits_used = lifetime_free_audits_used + 1 WHERE id = $1',
-      [req.user.id]
-    );
-  }
-
-  await auditQueue.add('run-audit', {
-    auditId,
+  const auditId = await createAudit({
+    userId: req.user.id,
     domain,
+    language,
+    planKey: req.planKey,
     categories: req.plan.categories,
-    language: language || 'en',
   });
 
   res.status(202).json({ auditId, status: 'pending' });
@@ -55,6 +38,16 @@ router.get('/', requireAuth, async (req, res) => {
     [req.user.id]
   );
   res.json(result.rows);
+});
+
+router.patch('/:id/share', requireAuth, async (req, res) => {
+  const { shared } = req.body;
+  const result = await pool.query(
+    'UPDATE audits SET is_shared = $1 WHERE id = $2 AND user_id = $3 RETURNING is_shared, share_token',
+    [!!shared, req.params.id, req.user.id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: 'Audit not found' });
+  res.json(result.rows[0]);
 });
 
 module.exports = router;
