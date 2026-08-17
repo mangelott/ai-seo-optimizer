@@ -9,13 +9,14 @@ const CATEGORIES = ['technical', 'content', 'keywords', 'backlinks'];
 const SEVERITIES = ['all', 'high', 'medium', 'low'];
 const IMPACT_COLOR = { high: 'var(--danger)', medium: 'var(--warning-strong)', low: 'var(--text-faint)' };
 
-export default function ReportBody({ audit, delta, headerActions }) {
+export default function ReportBody({ audit, delta, headerActions, autoFixAvailable, onApplyFix }) {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState('technical');
   const [severity, setSeverity] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
 
-  const fixes = Array.isArray(audit.ai_recommendations) ? audit.ai_recommendations : [];
+  const rawFixes = Array.isArray(audit.ai_recommendations) ? audit.ai_recommendations : [];
+  const fixes = rawFixes.map((f, i) => ({ ...f, _trueIndex: i }));
   const impactCounts = {
     high: fixes.filter((f) => f.severity === 'high').length,
     medium: fixes.filter((f) => f.severity === 'medium').length,
@@ -134,6 +135,8 @@ export default function ReportBody({ audit, delta, headerActions }) {
                 index={i}
                 expanded={expandedId === fixId}
                 onToggle={() => setExpandedId(expandedId === fixId ? null : fixId)}
+                autoFixAvailable={autoFixAvailable}
+                onApply={onApplyFix ? () => onApplyFix(fix._trueIndex) : undefined}
               />
             );
           })

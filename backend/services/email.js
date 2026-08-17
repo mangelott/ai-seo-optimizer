@@ -45,4 +45,16 @@ async function sendScoreDropAlertEmail(to, { domain, previousScore, score, repor
   });
 }
 
-module.exports = { sendPasswordResetEmail, sendAuditReadyEmail, sendScoreDropAlertEmail };
+async function sendTeamInviteEmail(to, { teamName, inviterEmail, appUrl }) {
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: `${inviterEmail} invited you to join ${teamName} on AI SEO Optimizer`,
+    html: `
+      <p><strong>${inviterEmail}</strong> invited you to join the <strong>${teamName}</strong> team on AI SEO Optimizer.</p>
+      <p><a href="${appUrl}">Create an account or log in</a> with this email address to join automatically.</p>
+    `,
+  });
+}
+
+module.exports = { sendPasswordResetEmail, sendAuditReadyEmail, sendScoreDropAlertEmail, sendTeamInviteEmail };

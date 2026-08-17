@@ -109,6 +109,31 @@ Código pronto em `backend/routes/gsc.js` e `backend/services/googleSearchConsol
 
 Sem isto configurado, o botão "Ligar Google Search Console" nas Definições leva a um ecrã de erro do próprio Google — não quebra o resto da app. Depois de ligado, cada domínio monitorizado pode ser associado a uma propriedade verificada da Search Console (o utilizador só vê propriedades onde já tem acesso confirmado na própria conta Google).
 
+## Correção automática via WordPress
+
+Código pronto em `backend/routes/wordpress.js`, `backend/services/wordpress.js` e `backend/services/encryption.js`. Deixa o utilizador aplicar, com um clique, as correções que a IA gera (título, meta description, alt text de imagens, dados estruturados) diretamente no WordPress do site auditado — sem copiar/colar. Funciona através de um plugin companheiro (`wordpress-plugin/ai-seo-optimizer-connector.php`, também servido em `frontend/public/ai-seo-optimizer-connector.php` para download direto nas Definições), porque o WordPress core não expõe meta description, alt text nem schema via REST API sem um plugin.
+
+Para o utilizador final ativar (por domínio, nas Definições da app):
+1. Descarrega o plugin (`ai-seo-optimizer-connector.php`) a partir das Definições e instala-o no WordPress (**Plugins → Adicionar novo → Carregar plugin**), depois ativa-o.
+2. Cria uma **Application Password** no WordPress (**Utilizadores → Perfil → Application Passwords**) para o utilizador que vai autenticar os pedidos.
+3. Nas Definições da app, introduz o URL do site, o username WordPress e a Application Password gerada, e liga.
+4. Ativa o toggle "Ativar correção automática" para esse domínio — a partir daí, cada fix compatível (title, meta description, alt text, schema) mostra um botão "Aplicar automaticamente" no relatório.
+
+Para ativar isto no teu backend (uma vez, não é por utilizador):
+1. Preenche `WP_CREDENTIALS_ENCRYPTION_KEY` no `.env` com uma string aleatória longa (ex.: `openssl rand -hex 32`) — é usada para cifrar as Application Passwords dos utilizadores em repouso (`pgp_sym_encrypt`/`pgp_sym_decrypt`, extensão `pgcrypto` já incluída no schema). No Render, o `render.yaml` já gera este valor automaticamente (`generateValue: true`).
+
+Sem o plugin instalado no site do utilizador, a ligação falha com uma mensagem clara a pedir para o instalar — não quebra o resto da app. Correções sem um campo WordPress claro (ex.: sugestões de keywords/backlinks) continuam apenas como "copiar/colar", como seria de esperar.
+
+## Contas de equipa e white-label (plano Agency)
+
+Código pronto em `backend/routes/teams.js`, `backend/services/teams.js` — não precisa de nenhuma configuração externa, funciona logo que o utilizador esteja no plano Agency. Um utilizador Agency cria uma equipa nas Definições, convida colegas por email; se o colega já tiver conta fica ligado de imediato, senão fica associado automaticamente assim que essa pessoa se registar ou fizer login com esse email. Todos os membros de uma equipa:
+
+- Partilham a mesma visibilidade de auditorias e domínios monitorizados (workspace único).
+- Usam os limites do plano Agency (ilimitado) para criar auditorias, mesmo que a conta pessoal deles seja Free/Starter/Pro — só o dono da equipa precisa de pagar Agency.
+- Podem exportar relatórios PDF com o logótipo e a cor de marca definidos pelo dono da equipa (`white_label_logo_url` / `white_label_brand_color`).
+
+Gestão da equipa (convidar, remover membros, editar white-label, eliminar equipa) é restrita ao dono; todos os membros só podem ver/consultar.
+
 ## Deploy
 
 ### Backend + worker (Render)

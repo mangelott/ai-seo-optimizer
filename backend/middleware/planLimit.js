@@ -3,15 +3,21 @@ const { PLANS } = require('../config/plans');
 
 async function checkPlanLimit(userId, domain) {
   const userResult = await pool.query(
-    'SELECT plan, lifetime_free_audits_used FROM users WHERE id = $1',
+    `SELECT u.plan, u.lifetime_free_audits_used, u.team_id, owner.plan AS team_owner_plan
+     FROM users u
+     LEFT JOIN teams t ON t.id = u.team_id
+     LEFT JOIN users owner ON owner.id = t.owner_user_id
+     WHERE u.id = $1`,
     [userId]
   );
   const user = userResult.rows[0];
   if (!user) return { ok: false, error: 'User not found' };
 
-  const plan = PLANS[user.plan] || PLANS.free;
+  // Team members share the team owner's plan/limits rather than their own individual plan.
+  const effectivePlanKey = user.team_id && user.team_owner_plan ? user.team_owner_plan : user.plan;
+  const plan = PLANS[effectivePlanKey] || PLANS.free;
 
-  if (user.plan === 'free') {
+  if (effectivePlanKey === 'free') {
     if (user.lifetime_free_audits_used >= plan.lifetimeFullAudits) {
       return { ok: false, error: 'Free audit already used. Upgrade to run another audit.' };
     }
@@ -43,7 +49,7 @@ async function checkPlanLimit(userId, domain) {
     }
   }
 
-  return { ok: true, plan, planKey: user.plan };
+  return { ok: true, plan, planKey: effectivePlanKey };
 }
 
 async function enforcePlanLimit(req, res, next) {

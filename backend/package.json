@@ -7,9 +7,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node db/migrate.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:unit": "node --test test/scoring.test.js test/claude.test.js test/plans.test.js",
-    "test:integration": "node --test test/api.test.js"
+    "test:integration": "node --test --test-concurrency=1 test/api.test.js test/recurringAudits.test.js test/wordpress.test.js test/teams.test.js"
   },
   "keywords": [],
   "type": "commonjs",

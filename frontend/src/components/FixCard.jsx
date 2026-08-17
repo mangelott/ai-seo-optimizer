@@ -12,9 +12,11 @@ const SEVERITY_BORDER = {
   low: 'var(--text-faint)',
 };
 
-export default function FixCard({ fix, index, expanded, onToggle }) {
+export default function FixCard({ fix, index, expanded, onToggle, autoFixAvailable, onApply }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
   const severity = fix.severity || 'low';
   const title = fix.title || fix.issue || '';
 
@@ -23,6 +25,19 @@ export default function FixCard({ fix, index, expanded, onToggle }) {
     navigator.clipboard.writeText(fix.snippet || fix.suggestedFix || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function handleApply(e) {
+    e.stopPropagation();
+    setApplying(true);
+    setApplyError('');
+    try {
+      await onApply();
+    } catch {
+      setApplyError(t('report.autoFixError'));
+    } finally {
+      setApplying(false);
+    }
   }
 
   return (
@@ -79,11 +94,22 @@ export default function FixCard({ fix, index, expanded, onToggle }) {
             >
               {copied ? t('report.copied') : t('report.copyFix')}
             </Button>
-            <button className={buttonStyles.base} disabled style={{ background: 'transparent', color: 'var(--text-faint)', border: '1px solid var(--border)', cursor: 'not-allowed', fontSize: 14, padding: '10px 16px' }}>
-              {t('report.autoFix')}{' '}
-              <span className={buttonStyles.comingSoonTag}>{t('report.comingSoon')}</span>
-            </button>
+            {fix.applied ? (
+              <span className={styles.appliedTag}>{t('report.autoFixApplied')}</span>
+            ) : fix.wpField && autoFixAvailable ? (
+              <Button size="sm" variant="secondary" onClick={handleApply} disabled={applying}>
+                {applying ? t('report.autoFixApplying') : t('report.autoFix')}
+              </Button>
+            ) : (
+              <button className={buttonStyles.base} disabled style={{ background: 'transparent', color: 'var(--text-faint)', border: '1px solid var(--border)', cursor: 'not-allowed', fontSize: 14, padding: '10px 16px' }}>
+                {t('report.autoFix')}{' '}
+                <span className={buttonStyles.comingSoonTag}>
+                  {fix.wpField ? t('report.autoFixSetupNeeded') : t('report.comingSoon')}
+                </span>
+              </button>
+            )}
           </div>
+          {applyError && <p className={styles.applyError}>{applyError}</p>}
         </div>
       )}
     </div>

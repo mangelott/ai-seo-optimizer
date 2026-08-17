@@ -124,3 +124,18 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+
+.appliedTag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--success);
+  padding: 10px 16px;
+}
+
+.applyError {
+  font-size: 13px;
+  color: var(--danger);
+  margin: 0;
+}

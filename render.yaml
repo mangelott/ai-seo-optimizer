@@ -59,6 +59,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: WP_CREDENTIALS_ENCRYPTION_KEY
+        generateValue: true
     # Render's free tier doesn't offer a Background Worker service type, so
     # the audit worker (jobs/auditWorker.js) runs in-process inside server.js
     # instead of as a separate service. Move it back out to its own `worker`

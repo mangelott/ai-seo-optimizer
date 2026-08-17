@@ -6,6 +6,7 @@ const pool = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
 const { getAuthUrl, exchangeCodeForProfile } = require('../services/google');
 const { sendPasswordResetEmail } = require('../services/email');
+const { acceptPendingTeamInvites } = require('../services/teams');
 
 const router = express.Router();
 
@@ -40,6 +41,8 @@ router.post('/register', async (req, res) => {
       );
     }
 
+    await acceptPendingTeamInvites(user.id, user.email);
+
     res.status(201).json(user);
   } catch (err) {
     if (err.code === '23505') {
@@ -57,6 +60,8 @@ router.post('/login', async (req, res) => {
   if (!user || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+
+  await acceptPendingTeamInvites(user.id, user.email);
 
   res.json({ token: signToken(user) });
 });
@@ -98,6 +103,8 @@ router.get('/google/callback', async (req, res) => {
         [user.id, scanId]
       );
     }
+
+    await acceptPendingTeamInvites(user.id, user.email);
 
     res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${signToken(user)}`);
   } catch (err) {

@@ -1,4 +1,4 @@
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, Image, StyleSheet, Font } from '@react-pdf/renderer';
 
 const COLORS = {
   text: '#1f2430',
@@ -52,7 +52,8 @@ const styles = StyleSheet.create({
 const CATEGORY_LABELS = { technical: 'Technical', content: 'Content', keywords: 'Keywords', backlinks: 'Backlinks' };
 const SEVERITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
-export default function ReportPDF({ audit, appName = 'AI SEO Optimizer' }) {
+export default function ReportPDF({ audit, appName = 'AI SEO Optimizer', brandColor, logoUrl }) {
+  const accent = brandColor || COLORS.accent;
   const fixes = Array.isArray(audit.ai_recommendations) ? audit.ai_recommendations : [];
   const byCategory = ['technical', 'content', 'keywords', 'backlinks']
     .map((category) => ({ category, items: fixes.filter((f) => f.category === category) }))
@@ -72,11 +73,12 @@ export default function ReportPDF({ audit, appName = 'AI SEO Optimizer' }) {
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.headerRow}>
           <View>
+            {logoUrl && <Image src={logoUrl} style={{ width: 110, maxHeight: 36, objectFit: 'contain', marginBottom: 8 }} />}
             <Text style={styles.domain}>{domain}</Text>
             <Text style={styles.meta}>Audit from {date}</Text>
           </View>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreValue}>{audit.score ?? '-'}</Text>
+          <View style={[styles.scoreBox, { backgroundColor: brandColor ? `${brandColor}22` : COLORS.accentSoft }]}>
+            <Text style={[styles.scoreValue, { color: accent }]}>{audit.score ?? '-'}</Text>
             <Text style={styles.scoreLabel}>/ 100</Text>
           </View>
         </View>

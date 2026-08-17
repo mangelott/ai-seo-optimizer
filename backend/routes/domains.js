@@ -7,8 +7,10 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res) => {
   const result = await pool.query(
     `SELECT id, domain, created_at, recurring_enabled, recurring_interval_days,
-     recurring_delivery, last_recurring_run_at, auto_fix_enabled, wp_url, wp_username
-     FROM monitored_domains WHERE user_id = $1 ORDER BY created_at DESC`,
+     recurring_delivery, last_recurring_run_at, auto_fix_enabled, wp_url, wp_username, gsc_site_url
+     FROM monitored_domains
+     WHERE user_id IN (SELECT id FROM users WHERE id = $1 OR team_id = (SELECT team_id FROM users WHERE id = $1))
+     ORDER BY created_at DESC`,
     [req.user.id]
   );
   res.json(result.rows);

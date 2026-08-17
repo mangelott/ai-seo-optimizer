@@ -10,7 +10,11 @@ async function analyzeContent(url) {
   const h1s = $('h1').map((_, el) => $(el).text().trim()).get();
   const wordCount = $('body').text().trim().split(/\s+/).length;
   const images = $('img');
-  const imagesMissingAlt = images.filter((_, el) => !$(el).attr('alt')).length;
+  const imagesMissingAltSrcs = images
+    .filter((_, el) => !$(el).attr('alt'))
+    .map((_, el) => $(el).attr('src'))
+    .get()
+    .filter(Boolean);
 
   return {
     title,
@@ -21,7 +25,8 @@ async function analyzeContent(url) {
     h1s,
     wordCount,
     imageCount: images.length,
-    imagesMissingAlt,
+    imagesMissingAlt: imagesMissingAltSrcs.length,
+    imagesMissingAltSrcs,
   };
 }
 

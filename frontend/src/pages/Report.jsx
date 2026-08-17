@@ -23,13 +23,24 @@ export default function Report() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [plan, setPlan] = useState(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [autoFixAvailable, setAutoFixAvailable] = useState(false);
+  const [team, setTeam] = useState(null);
 
   useEffect(() => {
     api.get(`/audit/${id}`).then(({ data }) => setAudit(data));
   }, [id]);
 
   useEffect(() => {
+    if (!audit) return;
+    api.get('/domains').then(({ data }) => {
+      const match = data.find((d) => d.domain === audit.domain);
+      setAutoFixAvailable(!!match?.auto_fix_enabled);
+    });
+  }, [audit?.domain]);
+
+  useEffect(() => {
     api.get('/auth/me').then(({ data }) => setPlan(data.plan));
+    api.get('/teams/me').then(({ data }) => setTeam(data.team)).catch(() => setTeam(null));
   }, []);
 
   useEffect(() => {
@@ -52,6 +63,15 @@ export default function Report() {
     }
   }
 
+  async function applyFix(index) {
+    const { data } = await api.post(`/audit/${id}/fixes/${index}/apply`);
+    setAudit((a) => {
+      const fixes = [...a.ai_recommendations];
+      fixes[index] = data.fix;
+      return { ...a, ai_recommendations: fixes };
+    });
+  }
+
   if (!audit) {
     return (
       <DashboardLayout maxWidth={1100}>
@@ -70,15 +90,19 @@ export default function Report() {
       <ReportBody
         audit={audit}
         delta={delta}
+        autoFixAvailable={autoFixAvailable}
+        onApplyFix={applyFix}
         headerActions={
           <>
             {PDF_PLANS.includes(plan) ? (
               <Suspense fallback={<Button variant="secondary" disabled>{t('common.loading')}</Button>}>
                 <PdfExportLink
                   audit={audit}
-                  appName={t('common.appName')}
+                  appName={team?.name || t('common.appName')}
                   loadingLabel={t('common.loading')}
                   label={t('report.exportPdf')}
+                  brandColor={team?.white_label_brand_color || undefined}
+                  logoUrl={team?.white_label_logo_url || undefined}
                 />
               </Suspense>
             ) : (

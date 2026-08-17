@@ -25,14 +25,33 @@ export default function Settings() {
   const [gscConnected, setGscConnected] = useState(false);
   const [gscSites, setGscSites] = useState([]);
   const [gscNotice, setGscNotice] = useState('');
+  const [wpForms, setWpForms] = useState({});
+  const [wpErrors, setWpErrors] = useState({});
+  const [wpBusy, setWpBusy] = useState({});
+  const [plan, setPlan] = useState(null);
+  const [team, setTeam] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamName, setTeamName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [teamError, setTeamError] = useState('');
+  const [teamBusy, setTeamBusy] = useState(false);
+
+  function loadTeam() {
+    api.get('/teams/me').then(({ data }) => {
+      setTeam(data.team);
+      setTeamMembers(data.members || []);
+    });
+  }
 
   useEffect(() => {
     api.get('/auth/me').then(({ data }) => {
       setName(data.name || '');
       setEmail(data.email || '');
+      setPlan(data.plan);
     });
     api.get('/domains').then(({ data }) => setDomains(data));
     api.get('/gsc/status').then(({ data }) => setGscConnected(data.connected));
+    loadTeam();
 
     const params = new URLSearchParams(window.location.search);
     const gscParam = params.get('gsc');
@@ -68,6 +87,88 @@ export default function Settings() {
   async function linkGscSite(domainId, siteUrl) {
     const { data } = await api.patch(`/gsc/domains/${domainId}`, { siteUrl: siteUrl || null });
     setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
+  }
+
+  function updateWpForm(domainId, field, value) {
+    setWpForms((f) => ({ ...f, [domainId]: { ...f[domainId], [field]: value } }));
+  }
+
+  async function connectWp(domainId) {
+    const form = wpForms[domainId] || {};
+    setWpBusy((b) => ({ ...b, [domainId]: true }));
+    setWpErrors((e) => ({ ...e, [domainId]: '' }));
+    try {
+      const { data } = await api.patch(`/wordpress/domains/${domainId}/connect`, {
+        wpUrl: form.wpUrl,
+        wpUsername: form.wpUsername,
+        wpAppPassword: form.wpAppPassword,
+      });
+      setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
+      setWpForms((f) => ({ ...f, [domainId]: {} }));
+    } catch (err) {
+      setWpErrors((e) => ({ ...e, [domainId]: err.response?.data?.error || 'Error' }));
+    } finally {
+      setWpBusy((b) => ({ ...b, [domainId]: false }));
+    }
+  }
+
+  async function toggleAutoFix(domainId, enabled) {
+    const { data } = await api.patch(`/wordpress/domains/${domainId}/toggle`, { autoFixEnabled: enabled });
+    setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
+  }
+
+  async function disconnectWp(domainId) {
+    await api.delete(`/wordpress/domains/${domainId}/disconnect`);
+    setDomains((d) =>
+      d.map((x) => (x.id === domainId ? { ...x, wp_url: null, wp_username: null, auto_fix_enabled: false } : x))
+    );
+  }
+
+  async function createTeam(e) {
+    e.preventDefault();
+    setTeamBusy(true);
+    setTeamError('');
+    try {
+      const { data } = await api.post('/teams', { name: teamName });
+      setTeam(data.team);
+      setTeamName('');
+    } catch (err) {
+      setTeamError(err.response?.data?.error || 'Error');
+    } finally {
+      setTeamBusy(false);
+    }
+  }
+
+  async function inviteMember(e) {
+    e.preventDefault();
+    setTeamBusy(true);
+    setTeamError('');
+    try {
+      await api.post('/teams/invite', { email: inviteEmail });
+      setInviteEmail('');
+      loadTeam();
+    } catch (err) {
+      setTeamError(err.response?.data?.error || 'Error');
+    } finally {
+      setTeamBusy(false);
+    }
+  }
+
+  async function removeMember(memberId) {
+    await api.delete(`/teams/members/${memberId}`);
+    loadTeam();
+  }
+
+  async function updateWhiteLabel(field, value) {
+    const { data } = await api.patch('/teams', { [field]: value });
+    setTeam(data.team);
+  }
+
+  async function deleteTeam() {
+    if (!window.confirm(t('settings.teamDeleteConfirm'))) return;
+    await api.delete('/teams');
+    setTeam(null);
+    setTeamMembers([]);
   }
 
   const initials = (name || email || '?').slice(0, 2).toUpperCase();
@@ -269,10 +370,168 @@ export default function Settings() {
                   </div>
                 </div>
               )}
+              <div className={styles.recurringRow}>
+                <div style={{ width: '100%' }}>
+                  <Label>{t('settings.wpTitle')}</Label>
+                  {d.wp_url ? (
+                    <>
+                      <p className={styles.dangerText} style={{ marginTop: 4 }}>
+                        {t('settings.wpConnectedTo', { url: d.wp_url })}
+                      </p>
+                      <div className={styles.recurringRow} style={{ marginTop: 8, paddingTop: 0, borderTop: 'none' }}>
+                        <Switch
+                          checked={!!d.auto_fix_enabled}
+                          onChange={(checked) => toggleAutoFix(d.id, checked)}
+                          label={t('settings.wpAutoFixEnable')}
+                        />
+                        <span className={styles.recurringLabel}>{t('settings.wpAutoFixEnable')}</span>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        type="button"
+                        style={{ marginTop: 10 }}
+                        onClick={() => disconnectWp(d.id)}
+                      >
+                        {t('settings.wpDisconnect')}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className={styles.dangerText} style={{ marginTop: 4 }}>
+                        {t('settings.wpDesc')}{' '}
+                        <a href="/ai-seo-optimizer-connector.php" download>
+                          {t('settings.wpDownloadPlugin')}
+                        </a>
+                      </p>
+                      <div className={styles.recurringOptions} style={{ marginTop: 10, flexWrap: 'wrap' }}>
+                        <div>
+                          <Label>{t('settings.wpUrl')}</Label>
+                          <Input
+                            placeholder="https://yoursite.com"
+                            value={wpForms[d.id]?.wpUrl || ''}
+                            onChange={(e) => updateWpForm(d.id, 'wpUrl', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t('settings.wpUsername')}</Label>
+                          <Input
+                            value={wpForms[d.id]?.wpUsername || ''}
+                            onChange={(e) => updateWpForm(d.id, 'wpUsername', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t('settings.wpAppPassword')}</Label>
+                          <Input
+                            type="password"
+                            value={wpForms[d.id]?.wpAppPassword || ''}
+                            onChange={(e) => updateWpForm(d.id, 'wpAppPassword', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        type="button"
+                        style={{ marginTop: 10 }}
+                        onClick={() => connectWp(d.id)}
+                        disabled={wpBusy[d.id]}
+                      >
+                        {wpBusy[d.id] ? t('common.loading') : t('settings.wpConnect')}
+                      </Button>
+                      {wpErrors[d.id] && <p className={styles.error}>{wpErrors[d.id]}</p>}
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {plan === 'agency' && (
+        <div className={styles.card}>
+          <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>{t('settings.team')}</h3>
+
+          {!team ? (
+            <>
+              <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.teamDesc')}</p>
+              <form onSubmit={createTeam} className={styles.recurringOptions} style={{ marginTop: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <Label>{t('settings.teamName')}</Label>
+                  <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} required />
+                </div>
+                <Button type="submit" size="sm" style={{ alignSelf: 'flex-end' }} disabled={teamBusy}>
+                  {t('settings.teamCreate')}
+                </Button>
+              </form>
+              {teamError && <p className={styles.error}>{teamError}</p>}
+            </>
+          ) : (
+            <>
+              <p className={styles.dangerText} style={{ marginTop: 4 }}>{team.name}</p>
+
+              <div className={styles.domainsList} style={{ marginTop: 12 }}>
+                {teamMembers.map((m) => (
+                  <div className={styles.domainRow} key={m.id}>
+                    <span style={{ fontSize: 14, color: 'var(--text)' }}>
+                      {m.invited_email} {m.accepted_at ? '' : `(${t('settings.teamPending')})`}
+                    </span>
+                    {team.isOwner && (
+                      <button className={styles.removeBtn} onClick={() => removeMember(m.id)}>
+                        {t('settings.remove')}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {team.isOwner && (
+                <>
+                  <form onSubmit={inviteMember} className={styles.recurringOptions} style={{ marginTop: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <Label>{t('settings.teamInviteEmail')}</Label>
+                      <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required />
+                    </div>
+                    <Button type="submit" size="sm" style={{ alignSelf: 'flex-end' }} disabled={teamBusy}>
+                      {t('settings.teamInvite')}
+                    </Button>
+                  </form>
+                  {teamError && <p className={styles.error}>{teamError}</p>}
+
+                  <div className={styles.recurringRow}>
+                    <div style={{ width: '100%' }}>
+                      <Label>{t('settings.teamWhiteLabel')}</Label>
+                      <div className={styles.recurringOptions} style={{ marginTop: 6, flexWrap: 'wrap' }}>
+                        <div>
+                          <Label>{t('settings.teamLogoUrl')}</Label>
+                          <Input
+                            placeholder="https://yourbrand.com/logo.png"
+                            defaultValue={team.white_label_logo_url || ''}
+                            onBlur={(e) => updateWhiteLabel('whiteLabelLogoUrl', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>{t('settings.teamBrandColor')}</Label>
+                          <Input
+                            type="color"
+                            defaultValue={team.white_label_brand_color || '#5b4fd6'}
+                            onBlur={(e) => updateWhiteLabel('whiteLabelBrandColor', e.target.value)}
+                            style={{ width: 60, padding: 4 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button variant="danger" size="sm" style={{ marginTop: 12 }} onClick={deleteTeam}>
+                    {t('settings.teamDelete')}
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className={styles.dangerCard}>
         <h3 className={styles.dangerTitle}>{t('settings.dangerZone')}</h3>
