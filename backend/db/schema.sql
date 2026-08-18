@@ -53,6 +53,7 @@ ALTER TABLE audits ADD COLUMN IF NOT EXISTS share_token UUID DEFAULT gen_random_
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS gsc_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS crawl_status TEXT;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS pages_crawled_count INTEGER;
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS core_web_vitals JSONB;
 CREATE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token);
 
 -- Site-wide crawl (Pro/Agency): one row per page found by the DataForSEO

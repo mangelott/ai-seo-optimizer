@@ -7,7 +7,7 @@ router.get('/:token', async (req, res) => {
   const result = await pool.query(
     `SELECT id, domain, status, technical_result, content_result, keyword_result,
      backlink_result, ai_recommendations, score, gsc_result, crawl_status, pages_crawled_count,
-     created_at, completed_at
+     core_web_vitals, created_at, completed_at
      FROM audits WHERE share_token = $1 AND is_shared = true`,
     [req.params.token]
   );

@@ -87,6 +87,19 @@
   }
 }
 
+.cwvRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 560px) {
+  .cwvRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .siteOverview {
   margin-bottom: 24px;
   padding: 16px;

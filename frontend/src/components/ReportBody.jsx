@@ -8,6 +8,12 @@ import styles from '../pages/Report.module.css';
 const CATEGORIES = ['technical', 'content', 'keywords', 'backlinks'];
 const SEVERITIES = ['all', 'high', 'medium', 'low'];
 const IMPACT_COLOR = { high: 'var(--danger)', medium: 'var(--warning-strong)', low: 'var(--text-faint)' };
+const CWV_RATING_COLOR = { good: 'var(--success)', 'needs-improvement': 'var(--warning-strong)', poor: 'var(--danger)' };
+
+function formatCwvValue(metric, entry) {
+  if (!entry || entry.value == null) return '—';
+  return metric === 'cls' ? entry.value.toFixed(2) : `${Math.round(entry.value)}ms`;
+}
 
 export default function ReportBody({ audit, delta, headerActions, autoFixAvailable, onApplyFix }) {
   const { t, i18n } = useTranslation();
@@ -76,6 +82,22 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
             <span className={styles.gscValue}>{audit.gsc_result.position.toFixed(1)}</span>
             <span className={styles.gscLabel}>{t('report.gscPosition')}</span>
           </div>
+        </div>
+      )}
+
+      {audit.core_web_vitals && (
+        <div className={styles.cwvRow}>
+          {['lcp', 'inp', 'cls'].map((metric) => {
+            const entry = audit.core_web_vitals[metric];
+            return (
+              <div key={metric} className={styles.gscStat}>
+                <span className={styles.gscValue} style={entry?.rating ? { color: CWV_RATING_COLOR[entry.rating] } : undefined}>
+                  {formatCwvValue(metric, entry)}
+                </span>
+                <span className={styles.gscLabel}>{t(`report.cwv${metric.toUpperCase()}`)}</span>
+              </div>
+            );
+          })}
         </div>
       )}
 

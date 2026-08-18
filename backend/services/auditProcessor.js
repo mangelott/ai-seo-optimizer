@@ -7,6 +7,7 @@ const pool = require('../db/pool');
 const contentAnalysis = require('./contentAnalysis');
 const dataforseo = require('./dataforseo');
 const siteCrawl = require('./siteCrawl');
+const coreWebVitals = require('./coreWebVitals');
 const claude = require('./claude');
 const email = require('./email');
 const googleSearchConsole = require('./googleSearchConsole');
@@ -168,6 +169,9 @@ async function processAuditJob(job) {
     backlinks: categories.includes('backlinks')
       ? dataforseo.getBacklinkSummary(domain).catch(() => null)
       : Promise.resolve(null),
+    coreWebVitals: categories.includes('technical')
+      ? coreWebVitals.getCoreWebVitals(domain).catch(() => null)
+      : Promise.resolve(null),
     gsc:
       gscLink?.gsc_site_url && gscLink?.gsc_refresh_token
         ? googleSearchConsole
@@ -180,10 +184,11 @@ async function processAuditJob(job) {
         : Promise.resolve(null),
   };
 
-  const [technical, content, backlinks, gscResult] = await Promise.all([
+  const [technical, content, backlinks, coreWebVitalsResult, gscResult] = await Promise.all([
     tasks.technical,
     tasks.content,
     tasks.backlinks,
+    tasks.coreWebVitals,
     tasks.gsc,
   ]);
 
@@ -193,7 +198,7 @@ async function processAuditJob(job) {
       : null;
 
   const aiRecommendations = await claude
-    .generateRecommendations({ domain, technical, content, keywords, backlinks, language })
+    .generateRecommendations({ domain, technical, content, keywords, backlinks, coreWebVitals: coreWebVitalsResult, language })
     .catch(() => []);
 
   const penalty = aiRecommendations.reduce((sum, fix) => {
@@ -206,9 +211,20 @@ async function processAuditJob(job) {
 
   await pool.query(
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
-     keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7, completed_at = now()
-     WHERE id = $8`,
-    [technical, content, JSON.stringify(keywords), backlinks, JSON.stringify(aiRecommendations), score, JSON.stringify(gscResult), auditId]
+     keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
+     core_web_vitals = $8, completed_at = now()
+     WHERE id = $9`,
+    [
+      technical,
+      content,
+      JSON.stringify(keywords),
+      backlinks,
+      JSON.stringify(aiRecommendations),
+      score,
+      JSON.stringify(gscResult),
+      JSON.stringify(coreWebVitalsResult),
+      auditId,
+    ]
   );
 
   if (userId && (notifyEmail || (previousScore != null && previousScore - score >= SCORE_DROP_ALERT_THRESHOLD))) {

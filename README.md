@@ -110,6 +110,17 @@ Código pronto em `backend/routes/gsc.js` e `backend/services/googleSearchConsol
 
 Sem isto configurado, o botão "Ligar Google Search Console" nas Definições leva a um ecrã de erro do próprio Google — não quebra o resto da app. Depois de ligado, cada domínio monitorizado pode ser associado a uma propriedade verificada da Search Console (o utilizador só vê propriedades onde já tem acesso confirmado na própria conta Google).
 
+## Core Web Vitals
+
+Código pronto em `backend/services/coreWebVitals.js`, integrado na auditoria técnica junto de `technical`/`content`/`backlinks` (sempre que a categoria `technical` está incluída no plano). Devolve LCP, INP e CLS já classificados (`good` / `needs-improvement` / `poor`) segundo os thresholds publicados pela Google, mais o `performanceScore` geral. Tenta primeiro o endpoint Lighthouse do DataForSEO (`on_page/lighthouse/live/json`) e, se a conta não tiver acesso a esse endpoint (ou a chamada falhar por qualquer razão), recorre automaticamente à [PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started) da Google, que é gratuita — preferindo aí dados de campo reais (CrUX) e só caindo para dados de laboratório (Lighthouse simulado) quando não há CrUX disponível para o URL. Como as restantes categorias, uma falha nunca bloqueia o resto da auditoria (`core_web_vitals` fica `null` no relatório).
+
+Para ativar a PageSpeed Insights API (usada como fallback, ou como única fonte se a conta DataForSEO não tiver Lighthouse):
+1. Em [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Library**, ativa a **PageSpeed Insights API**.
+2. Em **APIs & Services → Credentials**, cria uma **API key** (não precisa de OAuth — é uma chamada não autenticada por utilizador).
+3. Preenche `GOOGLE_PAGESPEED_API_KEY` no `.env`.
+
+Sem `GOOGLE_PAGESPEED_API_KEY` (e sem acesso ao Lighthouse do DataForSEO), `core_web_vitals` fica simplesmente `null` no relatório — não quebra o resto da auditoria.
+
 ## Correção automática via WordPress
 
 Código pronto em `backend/routes/wordpress.js`, `backend/services/wordpress.js` e `backend/services/encryption.js`. Deixa o utilizador aplicar, com um clique, as correções que a IA gera (título, meta description, alt text de imagens, dados estruturados) diretamente no WordPress do site auditado — sem copiar/colar. Funciona através de um plugin companheiro (`wordpress-plugin/ai-seo-optimizer-connector.php`, também servido em `frontend/public/ai-seo-optimizer-connector.php` para download direto nas Definições), porque o WordPress core não expõe meta description, alt text nem schema via REST API sem um plugin.

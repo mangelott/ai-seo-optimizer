@@ -22,6 +22,8 @@ function buildSystemPrompt(language) {
 - "sourceSearchText": for fixes that REPLACE an existing value (currentValue is not null) — the exact literal text as it would appear in the page's HTML source (e.g. "<title>Old Title</title>", or the literal current meta description content, or an "alt=\"\"" attribute for a specific image), used to locate the right line in a source file; null whenever currentValue is null (nothing existing to search for) or the fix isn't a simple literal replacement
 - "sourceReplaceText": the literal replacement text for whatever "sourceSearchText" matched (e.g. "<title>New Title</title>"); null if sourceSearchText is null
 
+Core Web Vitals thresholds (field data, per Google): LCP good ≤ 2500ms, needs improvement ≤ 4000ms, poor > 4000ms. INP good ≤ 200ms, needs improvement ≤ 500ms, poor > 500ms. CLS good ≤ 0.1, needs improvement ≤ 0.25, poor > 0.25. When "Core Web Vitals" data is provided and any metric rates "needs-improvement" or "poor", include a "technical" fix for it (severity "high" for poor, "medium" for needs-improvement) with concrete, metric-specific guidance (e.g. LCP: optimize the largest image/font/render-blocking resource; INP: reduce long JavaScript tasks/event handler work; CLS: reserve space for images/ads/embeds and avoid layout-shifting web fonts).
+
 Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}; "sourceSearchText"/"sourceReplaceText" should match the language of the actual current page content. Return ONLY the JSON array, no prose, no markdown fences.`;
 }
 
@@ -39,7 +41,7 @@ function parseRecommendationsResponse(content) {
   }
 }
 
-async function generateRecommendations({ domain, technical, content, keywords, backlinks, language = 'en' }) {
+async function generateRecommendations({ domain, technical, content, keywords, backlinks, coreWebVitals, language = 'en' }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 4000,
@@ -52,7 +54,8 @@ async function generateRecommendations({ domain, technical, content, keywords, b
 Technical audit: ${JSON.stringify(technical)}
 Content data: ${JSON.stringify(content)}
 Keyword data: ${JSON.stringify(keywords)}
-Backlink data: ${JSON.stringify(backlinks)}`,
+Backlink data: ${JSON.stringify(backlinks)}
+Core Web Vitals: ${JSON.stringify(coreWebVitals)}`,
       },
     ],
   });

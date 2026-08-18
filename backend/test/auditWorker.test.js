@@ -14,6 +14,7 @@ const pool = require('../db/pool');
 const { processAuditJob, SCORE_DROP_ALERT_THRESHOLD } = require('../services/auditProcessor');
 const contentAnalysis = require('../services/contentAnalysis');
 const dataforseo = require('../services/dataforseo');
+const coreWebVitals = require('../services/coreWebVitals');
 const claude = require('../services/claude');
 const email = require('../services/email');
 const googleSearchConsole = require('../services/googleSearchConsole');
@@ -46,6 +47,12 @@ function stubDefaults(t) {
   t.mock.method(dataforseo, 'getOnPageAudit', async () => ({ statusCode: 200 }));
   t.mock.method(dataforseo, 'getBacklinkSummary', async () => ({ totalBacklinks: 0 }));
   t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+  t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => ({
+    lcp: { value: 1800, rating: 'good' },
+    inp: { value: 150, rating: 'good' },
+    cls: { value: 0.05, rating: 'good' },
+    performanceScore: 93,
+  }));
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
   t.mock.method(claude, 'generateRecommendations', async () => ([]));
   t.mock.method(email, 'sendAuditReadyEmail', async () => {});
@@ -300,6 +307,7 @@ test('processAuditJob: only calls the services for categories included in the pl
   const backlinksMock = t.mock.method(dataforseo, 'getBacklinkSummary', async () => ({}));
   const contentMock = t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'T' }));
   const keywordsMock = t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+  const cwvMock = t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => null);
 
   const userId = await createUser(uniqueEmail('worker-categories'));
   const auditId = await createAuditRow(userId, 'https://worker-categories-site.com');
@@ -310,6 +318,77 @@ test('processAuditJob: only calls the services for categories included in the pl
   assert.equal(technicalMock.mock.callCount(), 0, 'technical is not in the plan\'s categories');
   assert.equal(backlinksMock.mock.callCount(), 0, 'backlinks is not in the plan\'s categories');
   assert.equal(keywordsMock.mock.callCount(), 0, 'keywords is not in the plan\'s categories');
+  assert.equal(cwvMock.mock.callCount(), 0, 'core web vitals is fetched alongside technical, so it is skipped too');
+});
+
+test('processAuditJob: fetches Core Web Vitals alongside the technical category and persists them classified', async (t) => {
+  stubDefaults(t);
+  const cwvMock = t.mock.method(coreWebVitals, 'getCoreWebVitals', async (domain) => {
+    assert.equal(domain, 'https://worker-cwv-site.com');
+    return {
+      lcp: { value: 4500, rating: 'poor' },
+      inp: { value: 100, rating: 'good' },
+      cls: { value: 0.3, rating: 'poor' },
+      performanceScore: 35,
+    };
+  });
+
+  const userId = await createUser(uniqueEmail('worker-cwv'));
+  const auditId = await createAuditRow(userId, 'https://worker-cwv-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-cwv-site.com', categories: ['technical', 'content'] },
+  });
+
+  assert.equal(cwvMock.mock.callCount(), 1);
+  const row = await pool.query('SELECT core_web_vitals FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].core_web_vitals, {
+    lcp: { value: 4500, rating: 'poor' },
+    inp: { value: 100, rating: 'good' },
+    cls: { value: 0.3, rating: 'poor' },
+    performanceScore: 35,
+  });
+});
+
+test('processAuditJob: a Core Web Vitals failure is swallowed — core_web_vitals is null and the audit still completes', async (t) => {
+  stubDefaults(t);
+  t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => {
+    throw new Error('PageSpeed Insights is down');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-cwvfail'));
+  const auditId = await createAuditRow(userId, 'https://worker-cwvfail-site.com');
+
+  await assert.doesNotReject(
+    processAuditJob({ data: { auditId, domain: 'https://worker-cwvfail-site.com', categories: ['technical', 'content'] } })
+  );
+
+  const row = await pool.query('SELECT status, core_web_vitals FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].core_web_vitals, null);
+});
+
+test('processAuditJob: passes Core Web Vitals through to Claude for recommendation generation', async (t) => {
+  stubDefaults(t);
+  t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => ({
+    lcp: { value: 5000, rating: 'poor' },
+    inp: null,
+    cls: null,
+    performanceScore: 20,
+  }));
+  const claudeMock = t.mock.method(claude, 'generateRecommendations', async (args) => {
+    assert.deepEqual(args.coreWebVitals, { lcp: { value: 5000, rating: 'poor' }, inp: null, cls: null, performanceScore: 20 });
+    return [];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-cwvclaude'));
+  const auditId = await createAuditRow(userId, 'https://worker-cwvclaude-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-cwvclaude-site.com', categories: ['technical', 'content'] },
+  });
+
+  assert.equal(claudeMock.mock.callCount(), 1);
 });
 
 test('processAuditJob: fetches keyword ideas from the content title only when "keywords" is an included category', async (t) => {
