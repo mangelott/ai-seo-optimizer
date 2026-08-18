@@ -139,3 +139,55 @@
   color: var(--danger);
   margin: 0;
 }
+
+.prLink {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 10px 16px;
+  text-decoration: none;
+}
+
+.prLink:hover {
+  text-decoration: underline;
+}
+
+.candidatePicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidateBtn {
+  text-align: left;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.candidateBtn:hover {
+  border-color: var(--border-strong);
+}
+
+.manualPathRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.manualPathRow > :first-child {
+  flex: 1;
+}

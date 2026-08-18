@@ -28,6 +28,9 @@ export default function Settings() {
   const [wpForms, setWpForms] = useState({});
   const [wpErrors, setWpErrors] = useState({});
   const [wpBusy, setWpBusy] = useState({});
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubRepos, setGithubRepos] = useState([]);
+  const [githubNotice, setGithubNotice] = useState('');
   const [plan, setPlan] = useState(null);
   const [team, setTeam] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -51,14 +54,19 @@ export default function Settings() {
     });
     api.get('/domains').then(({ data }) => setDomains(data));
     api.get('/gsc/status').then(({ data }) => setGscConnected(data.connected));
+    api.get('/github/status').then(({ data }) => setGithubConnected(data.connected));
     loadTeam();
 
     const params = new URLSearchParams(window.location.search);
     const gscParam = params.get('gsc');
     if (gscParam === 'connected') setGscNotice('success');
     else if (gscParam === 'error') setGscNotice('error');
-    if (gscParam) {
+    const githubParam = params.get('github');
+    if (githubParam === 'connected') setGithubNotice('success');
+    else if (githubParam === 'error') setGithubNotice('error');
+    if (gscParam || githubParam) {
       params.delete('gsc');
+      params.delete('github');
       const newSearch = params.toString();
       window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
     }
@@ -71,6 +79,14 @@ export default function Settings() {
       .then(({ data }) => setGscSites(data))
       .catch(() => setGscSites([]));
   }, [gscConnected]);
+
+  useEffect(() => {
+    if (!githubConnected) return;
+    api
+      .get('/github/repos')
+      .then(({ data }) => setGithubRepos(data))
+      .catch(() => setGithubRepos([]));
+  }, [githubConnected]);
 
   function connectGsc() {
     const token = localStorage.getItem('token');
@@ -122,6 +138,27 @@ export default function Settings() {
     setDomains((d) =>
       d.map((x) => (x.id === domainId ? { ...x, wp_url: null, wp_username: null, auto_fix_enabled: false } : x))
     );
+  }
+
+  function connectGithub() {
+    const token = localStorage.getItem('token');
+    window.location.href = `${API_BASE_URL}/github/connect?token=${encodeURIComponent(token)}`;
+  }
+
+  async function disconnectGithub() {
+    await api.delete('/github/disconnect');
+    setGithubConnected(false);
+    setGithubRepos([]);
+    setDomains((d) => d.map((x) => ({ ...x, github_repo: null, github_branch: null })));
+  }
+
+  async function linkGithubRepo(domainId, fullName) {
+    const repo = githubRepos.find((r) => r.fullName === fullName);
+    const { data } = await api.patch(`/github/domains/${domainId}`, {
+      repo: fullName || null,
+      branch: fullName ? repo?.defaultBranch || 'main' : null,
+    });
+    setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
   }
 
   async function createTeam(e) {
@@ -307,6 +344,24 @@ export default function Settings() {
       </div>
 
       <div className={styles.card}>
+        <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>{t('settings.github')}</h3>
+        <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.githubDesc')}</p>
+        {githubNotice === 'success' && <p className={styles.success}>{t('settings.githubConnectedNotice')}</p>}
+        {githubNotice === 'error' && <p className={styles.error}>{t('settings.githubErrorNotice')}</p>}
+        <div style={{ marginTop: 16 }}>
+          {githubConnected ? (
+            <Button variant="secondary" size="sm" type="button" onClick={disconnectGithub}>
+              {t('settings.githubDisconnect')}
+            </Button>
+          ) : (
+            <Button size="sm" type="button" onClick={connectGithub}>
+              {t('settings.githubConnect')}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className={styles.card}>
         <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>{t('settings.monitoredDomains')}</h3>
         <div className={styles.domainsList}>
           {domains.map((d) => (
@@ -449,6 +504,58 @@ export default function Settings() {
                   )}
                 </div>
               </div>
+              {!d.wp_url && (
+                <div className={styles.recurringRow}>
+                  <div style={{ width: '100%' }}>
+                    <Label>{t('settings.githubTitle')}</Label>
+                    {d.github_repo ? (
+                      <>
+                        <p className={styles.dangerText} style={{ marginTop: 4 }}>
+                          {t('settings.githubConnectedTo', { repo: d.github_repo, branch: d.github_branch })}
+                        </p>
+                        <div className={styles.recurringRow} style={{ marginTop: 8, paddingTop: 0, borderTop: 'none' }}>
+                          <Switch
+                            checked={!!d.auto_fix_enabled}
+                            onChange={(checked) => toggleAutoFix(d.id, checked)}
+                            label={t('settings.wpAutoFixEnable')}
+                          />
+                          <span className={styles.recurringLabel}>{t('settings.wpAutoFixEnable')}</span>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          type="button"
+                          style={{ marginTop: 10 }}
+                          onClick={() => linkGithubRepo(d.id, '')}
+                        >
+                          {t('settings.githubUnlink')}
+                        </Button>
+                      </>
+                    ) : githubConnected ? (
+                      <>
+                        <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.githubLinkDesc')}</p>
+                        <Label htmlFor={`github-repo-${d.id}`}>{t('settings.githubRepoLabel')}</Label>
+                        <select
+                          id={`github-repo-${d.id}`}
+                          className={styles.select}
+                          style={{ width: '100%', marginTop: 8 }}
+                          value=""
+                          onChange={(e) => linkGithubRepo(d.id, e.target.value)}
+                        >
+                          <option value="">{t('settings.githubNoRepo')}</option>
+                          {githubRepos.map((r) => (
+                            <option key={r.fullName} value={r.fullName}>
+                              {r.fullName}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    ) : (
+                      <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.githubConnectFirst')}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

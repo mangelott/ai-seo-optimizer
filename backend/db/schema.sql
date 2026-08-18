@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   gsc_refresh_token TEXT,
   gsc_connected_at TIMESTAMPTZ,
   team_id INTEGER,
+  github_installation_id TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -27,6 +28,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_access_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_refresh_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_connected_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS github_installation_id TEXT;
 
 CREATE TABLE IF NOT EXISTS audits (
   id SERIAL PRIMARY KEY,
@@ -86,6 +88,8 @@ CREATE TABLE IF NOT EXISTS monitored_domains (
   wp_username TEXT,
   wp_app_password_encrypted BYTEA,
   gsc_site_url TEXT,
+  github_repo TEXT,
+  github_branch TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (user_id, domain)
 );
@@ -99,6 +103,8 @@ ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS wp_url TEXT;
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS wp_username TEXT;
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS wp_app_password_encrypted BYTEA;
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS gsc_site_url TEXT;
+ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS github_repo TEXT;
+ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS github_branch TEXT;
 
 CREATE TABLE IF NOT EXISTS teams (
   id SERIAL PRIMARY KEY,

@@ -63,13 +63,23 @@ export default function Report() {
     }
   }
 
-  async function applyFix(index) {
-    const { data } = await api.post(`/audit/${id}/fixes/${index}/apply`);
-    setAudit((a) => {
-      const fixes = [...a.ai_recommendations];
-      fixes[index] = data.fix;
-      return { ...a, ai_recommendations: fixes };
-    });
+  async function applyFix(index, filePath) {
+    try {
+      const { data } = await api.post(`/audit/${id}/fixes/${index}/apply`, filePath ? { filePath } : undefined);
+      setAudit((a) => {
+        const fixes = [...a.ai_recommendations];
+        fixes[index] = data.fix;
+        return { ...a, ai_recommendations: fixes };
+      });
+    } catch (err) {
+      const body = err.response?.data;
+      if (err.response?.status === 409 && body) {
+        const wrapped = new Error(body.error);
+        wrapped.candidates = body.candidates || [];
+        throw wrapped;
+      }
+      throw err;
+    }
   }
 
   if (!audit) {

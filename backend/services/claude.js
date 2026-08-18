@@ -19,8 +19,10 @@ function buildSystemPrompt(language) {
 - "wpField": one of "post_title", "meta_description", "image_alt", "schema", or null — which WordPress field this fix maps to, only when cmsAutoApplicable is true and it is unambiguous (title tag → post_title, meta description → meta_description, a single missing image alt → image_alt, JSON-LD structured data → schema); use null whenever the fix can't be reduced to one specific field (e.g. "add more content", multiple images, backlink/keyword suggestions)
 - "wpTarget": for "image_alt" fixes, the exact "src" URL of the image found in the audit (string); null for every other wpField
 - "wpValue": the exact new value to write to that WordPress field (plain text for post_title/meta_description/image_alt, a JSON object for schema); null if wpField is null
+- "sourceSearchText": for fixes that REPLACE an existing value (currentValue is not null) — the exact literal text as it would appear in the page's HTML source (e.g. "<title>Old Title</title>", or the literal current meta description content, or an "alt=\"\"" attribute for a specific image), used to locate the right line in a source file; null whenever currentValue is null (nothing existing to search for) or the fix isn't a simple literal replacement
+- "sourceReplaceText": the literal replacement text for whatever "sourceSearchText" matched (e.g. "<title>New Title</title>"); null if sourceSearchText is null
 
-Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}. Return ONLY the JSON array, no prose, no markdown fences.`;
+Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}; "sourceSearchText"/"sourceReplaceText" should match the language of the actual current page content. Return ONLY the JSON array, no prose, no markdown fences.`;
 }
 
 function parseRecommendationsResponse(content) {

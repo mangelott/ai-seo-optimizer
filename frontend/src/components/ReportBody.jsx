@@ -136,7 +136,7 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
                 expanded={expandedId === fixId}
                 onToggle={() => setExpandedId(expandedId === fixId ? null : fixId)}
                 autoFixAvailable={autoFixAvailable}
-                onApply={onApplyFix ? () => onApplyFix(fix._trueIndex) : undefined}
+                onApply={onApplyFix ? (filePath) => onApplyFix(fix._trueIndex, filePath) : undefined}
               />
             );
           })

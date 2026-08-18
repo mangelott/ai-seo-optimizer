@@ -61,6 +61,12 @@ services:
         sync: false
       - key: WP_CREDENTIALS_ENCRYPTION_KEY
         generateValue: true
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_SLUG
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
     # Render's free tier doesn't offer a Background Worker service type, so
     # the audit worker (jobs/auditWorker.js) runs in-process inside server.js
     # instead of as a separate service. Move it back out to its own `worker`

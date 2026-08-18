@@ -125,6 +125,29 @@ Para ativar isto no teu backend (uma vez, não é por utilizador):
 
 Sem o plugin instalado no site do utilizador, a ligação falha com uma mensagem clara a pedir para o instalar — não quebra o resto da app. Correções sem um campo WordPress claro (ex.: sugestões de keywords/backlinks) continuam apenas como "copiar/colar", como seria de esperar.
 
+## Correção automática via GitHub (sites que não são WordPress)
+
+Código pronto em `backend/routes/github.js` e `backend/services/github.js`. Resolve a limitação de o auto-fix só funcionar em WordPress: liga um repositório GitHub a um domínio e cada fix compatível (title, meta description, alt text — os mesmos que o WordPress cobre, sempre que há um `currentValue` literal para procurar no código-fonte) abre um **Pull Request** para revisão humana, nunca faz commit direto a `main`. Localizar o ficheiro certo no repositório é o problema que o WordPress resolve de graça (`url_to_postid()`) e o GitHub não — por isso o fluxo é: pesquisa automática no código-fonte pelo texto atual (GitHub code search) e, se não encontrar exatamente um ficheiro, pede ao utilizador para indicar o caminho manualmente (com a lista de candidatos, se houver mais do que um).
+
+Se um domínio tiver WordPress **e** GitHub ligados ao mesmo tempo, o WordPress tem prioridade — a app assume que só um dos dois é o "site real".
+
+Para ativar isto no teu backend (uma vez, não é por utilizador) — precisas de criar uma **GitHub App**:
+1. Em [github.com/settings/apps](https://github.com/settings/apps) (ou nas definições da tua organização) → **New GitHub App**.
+2. **Homepage URL**: o URL do teu frontend. **Callback URL**: não é necessário (não usamos OAuth de utilizador). **Setup URL** (em "Post installation"): `https://<o-teu-backend>/api/github/callback` (dev: `http://localhost:4000/api/github/callback`) — marca "Redirect on update" também.
+3. Em **Webhook**, desmarca "Active" (não precisamos de eventos).
+4. Em **Permissions → Repository permissions**: `Contents` → Read and write; `Pull requests` → Read and write. (`Metadata` fica Read-only por defeito.)
+5. Em "Where can this GitHub App be installed?", escolhe conforme preferires (qualquer conta, ou só a tua).
+6. Cria a app. Anota o **App ID** (no topo da página) e o **slug** (a parte final do URL da app, ex. `github.com/apps/o-teu-slug`).
+7. Em **Private keys**, gera uma nova chave privada — descarrega o `.pem`. Para colocar no `.env`, converte as quebras de linha em `\n` literais (uma linha só): `awk '{printf "%s\\n", $0}' a-tua-chave.pem`.
+8. Preenche `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` no `.env` (ou nas env vars do Render — `render.yaml` já as tem marcadas como `sync: false`).
+
+Para o utilizador final ativar (por domínio, nas Definições da app, só quando o domínio **não** já tem WordPress ligado):
+1. Liga a conta GitHub uma vez (botão "Ligar GitHub" nas Definições) — abre o ecrã de instalação da GitHub App, onde escolhe a que repositórios dar acesso.
+2. Por domínio, escolhe o repositório na lista.
+3. Ativa o toggle "Ativar correção automática" — a partir daí, os fixes compatíveis mostram "Aplicar automaticamente", que abre um PR em vez de aplicar direto.
+
+Sem a app configurada, o botão "Ligar GitHub" leva a um ecrã de erro do próprio GitHub — não quebra o resto da app.
+
 ## Contas de equipa e white-label (plano Agency)
 
 Código pronto em `backend/routes/teams.js`, `backend/services/teams.js` — não precisa de nenhuma configuração externa, funciona logo que o utilizador esteja no plano Agency. Um utilizador Agency cria uma equipa nas Definições, convida colegas por email; se o colega já tiver conta fica ligado de imediato, senão fica associado automaticamente assim que essa pessoa se registar ou fizer login com esse email. Todos os membros de uma equipa:

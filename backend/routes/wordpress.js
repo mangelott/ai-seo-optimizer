@@ -46,12 +46,14 @@ router.patch('/domains/:id/toggle', requireAuth, async (req, res) => {
 
   if (autoFixEnabled) {
     const check = await pool.query(
-      'SELECT wp_url, wp_app_password_encrypted FROM monitored_domains WHERE id = $1 AND user_id = $2',
+      'SELECT wp_url, wp_app_password_encrypted, github_repo FROM monitored_domains WHERE id = $1 AND user_id = $2',
       [req.params.id, req.user.id]
     );
     if (!check.rows[0]) return res.status(404).json({ error: 'Domain not found' });
-    if (!check.rows[0].wp_url || !check.rows[0].wp_app_password_encrypted) {
-      return res.status(400).json({ error: 'Connect a WordPress site to this domain before enabling auto-fix' });
+    const hasWordPress = check.rows[0].wp_url && check.rows[0].wp_app_password_encrypted;
+    const hasGithub = !!check.rows[0].github_repo;
+    if (!hasWordPress && !hasGithub) {
+      return res.status(400).json({ error: 'Connect WordPress or GitHub to this domain before enabling auto-fix' });
     }
   }
 

@@ -124,6 +124,73 @@ describe('FixCard', () => {
     expect(screen.getByText('Apply automatically').closest('button')).toBeEnabled();
   });
 
+  it('shows a real, enabled button for GitHub-eligible fixes (sourceSearchText, no wpField)', () => {
+    const ghFix = { ...SAMPLE_FIX, wpField: null, sourceSearchText: '<title>Old</title>', sourceReplaceText: '<title>New</title>' };
+    render(<FixCard fix={ghFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={vi.fn()} />);
+    expect(screen.getByText('Apply automatically').closest('button')).toBeEnabled();
+  });
+
+  it('shows a "PR opened" link instead of a button once fix.prUrl is set', () => {
+    const prFix = {
+      ...SAMPLE_FIX,
+      sourceSearchText: 'x',
+      sourceReplaceText: 'y',
+      prUrl: 'https://github.com/acme/website/pull/42',
+    };
+    render(<FixCard fix={prFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={vi.fn()} />);
+    const link = screen.getByText('PR opened →').closest('a');
+    expect(link).toHaveAttribute('href', 'https://github.com/acme/website/pull/42');
+    expect(screen.queryByText('Apply automatically')).not.toBeInTheDocument();
+    expect(screen.queryByText('Applied ✓')).not.toBeInTheDocument();
+  });
+
+  it('clicking the PR link does not toggle the card', () => {
+    const onToggle = vi.fn();
+    const prFix = { ...SAMPLE_FIX, sourceSearchText: 'x', sourceReplaceText: 'y', prUrl: 'https://github.com/acme/website/pull/42' };
+    render(<FixCard fix={prFix} index={0} expanded onToggle={onToggle} autoFixAvailable onApply={vi.fn()} />);
+    fireEvent.click(screen.getByText('PR opened →'));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('shows a list of candidate files when onApply rejects with multiple candidates, and picking one retries with that path', async () => {
+    const onApply = vi.fn().mockRejectedValueOnce(
+      Object.assign(new Error('Found this text in multiple files. Pick the right one.'), {
+        candidates: ['src/pages/index.html', 'src/pages/about.html'],
+      })
+    );
+    onApply.mockResolvedValueOnce(undefined);
+    const ghFix = { ...SAMPLE_FIX, sourceSearchText: '<title>Old</title>', sourceReplaceText: '<title>New</title>' };
+    render(<FixCard fix={ghFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={onApply} />);
+
+    fireEvent.click(screen.getByText('Apply automatically'));
+    expect(await screen.findByText('src/pages/index.html')).toBeInTheDocument();
+    expect(screen.getByText('src/pages/about.html')).toBeInTheDocument();
+    expect(screen.getByText('Found this text in multiple files. Pick the right one.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('src/pages/about.html'));
+    expect(onApply).toHaveBeenLastCalledWith('src/pages/about.html');
+  });
+
+  it('shows a manual file-path input when onApply rejects with no candidates, and submits the typed path', async () => {
+    const onApply = vi.fn().mockRejectedValueOnce(
+      Object.assign(new Error("Couldn't find this text in the repository. Specify the file manually."), { candidates: [] })
+    );
+    onApply.mockResolvedValueOnce(undefined);
+    const ghFix = { ...SAMPLE_FIX, sourceSearchText: '<title>Old</title>', sourceReplaceText: '<title>New</title>' };
+    render(<FixCard fix={ghFix} index={0} expanded onToggle={() => {}} autoFixAvailable onApply={onApply} />);
+
+    fireEvent.click(screen.getByText('Apply automatically'));
+    const input = await screen.findByPlaceholderText('e.g. src/pages/index.html');
+    const applyToFileBtn = screen.getByText('Apply to this file');
+    expect(applyToFileBtn).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: 'src/pages/home.html' } });
+    expect(applyToFileBtn).toBeEnabled();
+    fireEvent.click(applyToFileBtn);
+
+    expect(onApply).toHaveBeenLastCalledWith('src/pages/home.html');
+  });
+
   it('clicking the copy button does not also toggle the card (stopPropagation)', () => {
     const onToggle = vi.fn();
     render(<FixCard fix={SAMPLE_FIX} index={0} expanded onToggle={onToggle} />);

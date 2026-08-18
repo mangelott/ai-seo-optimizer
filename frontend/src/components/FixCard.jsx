@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import Input from './ui/Input';
 import buttonStyles from './ui/Button.module.css';
 import { severityLabelKey } from '../lib/severity';
 import styles from './FixCard.module.css';
@@ -17,8 +18,11 @@ export default function FixCard({ fix, index, expanded, onToggle, autoFixAvailab
   const [copied, setCopied] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [candidates, setCandidates] = useState(null);
+  const [manualPath, setManualPath] = useState('');
   const severity = fix.severity || 'low';
   const title = fix.title || fix.issue || '';
+  const autoFixEligible = !!(fix.wpField || fix.sourceSearchText);
 
   function handleCopy(e) {
     e.stopPropagation();
@@ -27,17 +31,37 @@ export default function FixCard({ fix, index, expanded, onToggle, autoFixAvailab
     setTimeout(() => setCopied(false), 1800);
   }
 
-  async function handleApply(e) {
-    e.stopPropagation();
+  async function runApply(filePath) {
     setApplying(true);
     setApplyError('');
     try {
-      await onApply();
-    } catch {
-      setApplyError(t('report.autoFixError'));
+      await onApply(filePath);
+      setCandidates(null);
+    } catch (err) {
+      if (err?.candidates) {
+        setCandidates(err.candidates);
+        setApplyError(err.message || t('report.autoFixError'));
+      } else {
+        setApplyError(t('report.autoFixError'));
+      }
     } finally {
       setApplying(false);
     }
+  }
+
+  function handleApply(e) {
+    e.stopPropagation();
+    runApply();
+  }
+
+  function handlePickCandidate(e, path) {
+    e.stopPropagation();
+    runApply(path);
+  }
+
+  function handleManualSubmit(e) {
+    e.stopPropagation();
+    if (manualPath.trim()) runApply(manualPath.trim());
   }
 
   return (
@@ -94,9 +118,13 @@ export default function FixCard({ fix, index, expanded, onToggle, autoFixAvailab
             >
               {copied ? t('report.copied') : t('report.copyFix')}
             </Button>
-            {fix.applied ? (
+            {fix.prUrl ? (
+              <a className={styles.prLink} href={fix.prUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                {t('report.autoFixPrOpened')}
+              </a>
+            ) : fix.applied ? (
               <span className={styles.appliedTag}>{t('report.autoFixApplied')}</span>
-            ) : fix.wpField && autoFixAvailable ? (
+            ) : autoFixEligible && autoFixAvailable ? (
               <Button size="sm" variant="secondary" onClick={handleApply} disabled={applying}>
                 {applying ? t('report.autoFixApplying') : t('report.autoFix')}
               </Button>
@@ -104,12 +132,42 @@ export default function FixCard({ fix, index, expanded, onToggle, autoFixAvailab
               <button className={buttonStyles.base} disabled style={{ background: 'transparent', color: 'var(--text-faint)', border: '1px solid var(--border)', cursor: 'not-allowed', fontSize: 14, padding: '10px 16px' }}>
                 {t('report.autoFix')}{' '}
                 <span className={buttonStyles.comingSoonTag}>
-                  {fix.wpField ? t('report.autoFixSetupNeeded') : t('report.comingSoon')}
+                  {autoFixEligible ? t('report.autoFixSetupNeeded') : t('report.comingSoon')}
                 </span>
               </button>
             )}
           </div>
           {applyError && <p className={styles.applyError}>{applyError}</p>}
+          {candidates && (
+            <div className={styles.candidatePicker} onClick={(e) => e.stopPropagation()}>
+              {candidates.length > 0 && (
+                <div className={styles.candidateList}>
+                  {candidates.map((path) => (
+                    <button
+                      key={path}
+                      type="button"
+                      className={styles.candidateBtn}
+                      onClick={(e) => handlePickCandidate(e, path)}
+                      disabled={applying}
+                    >
+                      {path}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className={styles.manualPathRow}>
+                <Input
+                  placeholder={t('report.autoFixManualPathPlaceholder')}
+                  value={manualPath}
+                  onChange={(e) => setManualPath(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Button size="sm" variant="secondary" onClick={handleManualSubmit} disabled={applying || !manualPath.trim()}>
+                  {t('report.autoFixApplyToFile')}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

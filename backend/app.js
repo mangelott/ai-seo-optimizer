@@ -11,6 +11,7 @@ const publicReportRoutes = require('./routes/publicReport');
 const gscRoutes = require('./routes/gsc');
 const wordpressRoutes = require('./routes/wordpress');
 const teamsRoutes = require('./routes/teams');
+const githubRoutes = require('./routes/github');
 
 const app = express();
 
@@ -32,5 +33,6 @@ app.use('/api/public/report', publicReportRoutes);
 app.use('/api/gsc', gscRoutes);
 app.use('/api/wordpress', wordpressRoutes);
 app.use('/api/teams', teamsRoutes);
+app.use('/api/github', githubRoutes);
 
 module.exports = app;

@@ -29,6 +29,8 @@ function setupApiDefaults({
   gscStatus = { connected: false },
   team = { team: null, members: [] },
   gscSites = [],
+  githubStatus = { connected: false },
+  githubRepos = [],
 } = {}) {
   api.get.mockImplementation((path) => {
     if (path === '/auth/me') return resolved(me);
@@ -36,6 +38,8 @@ function setupApiDefaults({
     if (path === '/gsc/status') return resolved(gscStatus);
     if (path === '/teams/me') return resolved(team);
     if (path === '/gsc/sites') return resolved(gscSites);
+    if (path === '/github/status') return resolved(githubStatus);
+    if (path === '/github/repos') return resolved(githubRepos);
     return Promise.reject(new Error(`Unhandled GET ${path}`));
   });
 }
@@ -179,6 +183,105 @@ describe('Settings: Google Search Console', () => {
     setupApiDefaults();
     renderSettings();
     expect(await screen.findByText("Couldn't connect Google Search Console. Please try again.")).toBeInTheDocument();
+  });
+});
+
+describe('Settings: GitHub', () => {
+  it('shows the connect button when not connected', async () => {
+    setupApiDefaults({ githubStatus: { connected: false } });
+    renderSettings();
+    expect(await screen.findByText('Connect GitHub')).toBeInTheDocument();
+  });
+
+  it('redirects to the backend connect endpoint with the stored token', async () => {
+    setupApiDefaults({ githubStatus: { connected: false } });
+    renderSettings();
+    await screen.findByText('Connect GitHub');
+
+    const originalLocation = window.location;
+    delete window.location;
+    window.location = { href: '' };
+
+    fireEvent.click(screen.getByText('Connect GitHub'));
+    expect(window.location.href).toBe('http://localhost:4000/api/github/connect?token=fake-token');
+
+    window.location = originalLocation;
+  });
+
+  it('shows Disconnect when connected, and reverts to Connect after disconnecting', async () => {
+    setupApiDefaults({ githubStatus: { connected: true } });
+    api.delete.mockResolvedValue({ data: { ok: true } });
+    renderSettings();
+
+    expect(await screen.findByText('Disconnect')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/github/disconnect'));
+    expect(await screen.findByText('Connect GitHub')).toBeInTheDocument();
+  });
+
+  it('shows a success notice and strips the ?github=connected query param after the App install redirect', async () => {
+    window.history.pushState({}, '', '/settings?github=connected');
+    setupApiDefaults();
+    renderSettings();
+
+    expect(await screen.findByText('GitHub connected successfully.')).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('shows an error notice after a failed App install redirect', async () => {
+    window.history.pushState({}, '', '/settings?github=error');
+    setupApiDefaults();
+    renderSettings();
+    expect(await screen.findByText("Couldn't connect GitHub. Please try again.")).toBeInTheDocument();
+  });
+
+  it('a domain with no WordPress connection shows a hint to connect GitHub first, when GitHub is not connected', async () => {
+    const domain = { id: 5, domain: 'https://example.com', wp_url: null, github_repo: null };
+    setupApiDefaults({ domains: [domain], githubStatus: { connected: false } });
+    renderSettings();
+    await screen.findByText('example.com');
+    expect(screen.getByText('Connect GitHub above to use it as an alternative to WordPress.')).toBeInTheDocument();
+  });
+
+  it('shows a repo picker once GitHub is connected, and linking a repo calls the API with its default branch', async () => {
+    const domain = { id: 5, domain: 'https://example.com', wp_url: null, github_repo: null };
+    setupApiDefaults({
+      domains: [domain],
+      githubStatus: { connected: true },
+      githubRepos: [{ fullName: 'acme/website', defaultBranch: 'main' }],
+    });
+    api.patch.mockResolvedValue({ data: { ...domain, github_repo: 'acme/website', github_branch: 'main' } });
+    renderSettings();
+
+    await screen.findByText('example.com');
+    fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'acme/website' } });
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/github/domains/5', { repo: 'acme/website', branch: 'main' });
+    });
+  });
+
+  it('shows the connected repo and unlinking clears it', async () => {
+    const domain = { id: 5, domain: 'https://example.com', wp_url: null, github_repo: 'acme/website', github_branch: 'main' };
+    setupApiDefaults({ domains: [domain], githubStatus: { connected: true } });
+    api.patch.mockResolvedValue({ data: { ...domain, github_repo: null, github_branch: null } });
+    renderSettings();
+
+    expect(await screen.findByText('Connected to acme/website (main)')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Unlink'));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/github/domains/5', { repo: null, branch: null });
+    });
+  });
+
+  it('a domain already connected to WordPress does not show the GitHub picker at all', async () => {
+    const domain = { id: 5, domain: 'https://example.com', wp_url: 'https://example.com', wp_username: 'admin', github_repo: null };
+    setupApiDefaults({ domains: [domain], githubStatus: { connected: true } });
+    renderSettings();
+    await screen.findByText('example.com');
+    expect(screen.queryByText('GitHub auto-fix')).not.toBeInTheDocument();
   });
 });
 
