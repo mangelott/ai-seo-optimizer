@@ -57,6 +57,11 @@ test('returns an empty array for undefined/null content', () => {
   assert.deepEqual(parseRecommendationsResponse(null), []);
 });
 
+test('system prompt instructs the model to correct existing structured data instead of duplicating it', () => {
+  assert.match(buildSystemPrompt('en'), /structuredData/);
+  assert.match(buildSystemPrompt('en'), /CORRECTION/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);
