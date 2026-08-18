@@ -121,6 +121,10 @@ Para ativar a PageSpeed Insights API (usada como fallback, ou como única fonte 
 
 Sem `GOOGLE_PAGESPEED_API_KEY` (e sem acesso ao Lighthouse do DataForSEO), `core_web_vitals` fica simplesmente `null` no relatório — não quebra o resto da auditoria.
 
+## Validação de robots.txt e sitemap.xml
+
+Código pronto em `backend/services/crawlability.js`, integrado na auditoria técnica junto de `technical`/`content`/`backlinks`/Core Web Vitals (sempre que a categoria `technical` está incluída no plano). São só pedidos HTTP simples (sem custo de API paga): busca `{domínio}/robots.txt`, faz parse das diretivas `Disallow`/`Allow`/`Sitemap`, e verifica se a homepage fica bloqueada por engano (`Disallow: /` para `User-agent: *` sem um `Allow: /` a anular). Depois busca o sitemap (o primeiro URL declarado via `Sitemap:` no robots.txt, ou `{domínio}/sitemap.xml` por defeito), valida que é XML bem formado (`<urlset>` ou `<sitemapindex>`), conta os URLs, e testa uma amostra em busca de URLs mortos (404). Como as restantes categorias, uma falha nunca bloqueia o resto da auditoria — ficam `null` no relatório (`robots_txt_result` / `sitemap_result`). A IA gera uma correção de severidade alta sempre que a homepage está bloqueada, ou o sitemap não existe/está malformado, ou tem URLs mortos na amostra — são problemas que impedem indexação por completo.
+
 ## Correção automática via WordPress
 
 Código pronto em `backend/routes/wordpress.js`, `backend/services/wordpress.js` e `backend/services/encryption.js`. Deixa o utilizador aplicar, com um clique, as correções que a IA gera (título, meta description, alt text de imagens, dados estruturados) diretamente no WordPress do site auditado — sem copiar/colar. Funciona através de um plugin companheiro (`wordpress-plugin/ai-seo-optimizer-connector.php`, também servido em `frontend/public/ai-seo-optimizer-connector.php` para download direto nas Definições), porque o WordPress core não expõe meta description, alt text nem schema via REST API sem um plugin.

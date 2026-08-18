@@ -25,6 +25,7 @@ let pool;
 let dataforseo;
 let contentAnalysis;
 let coreWebVitals;
+let crawlability;
 let claude;
 let email;
 let googleSearchConsole;
@@ -133,6 +134,7 @@ async function createAuditRow(userId, domain) {
 function stubNonTechnicalServices(t) {
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
   t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => null);
+  t.mock.method(crawlability, 'checkCrawlability', async () => null);
   t.mock.method(claude, 'generateRecommendations', async () => []);
   t.mock.method(email, 'sendAuditReadyEmail', async () => {});
   t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
@@ -150,6 +152,7 @@ test.before(async () => {
   contentAnalysis = require('../services/contentAnalysis');
   dataforseo = require('../services/dataforseo');
   coreWebVitals = require('../services/coreWebVitals');
+  crawlability = require('../services/crawlability');
   claude = require('../services/claude');
   email = require('../services/email');
   googleSearchConsole = require('../services/googleSearchConsole');

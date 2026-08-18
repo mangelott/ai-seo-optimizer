@@ -15,6 +15,7 @@ const { processAuditJob, SCORE_DROP_ALERT_THRESHOLD } = require('../services/aud
 const contentAnalysis = require('../services/contentAnalysis');
 const dataforseo = require('../services/dataforseo');
 const coreWebVitals = require('../services/coreWebVitals');
+const crawlability = require('../services/crawlability');
 const claude = require('../services/claude');
 const email = require('../services/email');
 const googleSearchConsole = require('../services/googleSearchConsole');
@@ -52,6 +53,10 @@ function stubDefaults(t) {
     inp: { value: 150, rating: 'good' },
     cls: { value: 0.05, rating: 'good' },
     performanceScore: 93,
+  }));
+  t.mock.method(crawlability, 'checkCrawlability', async () => ({
+    robotsTxt: { exists: true, blocksHomepage: false, sitemapUrls: [], raw: 'User-agent: *\nAllow: /\n' },
+    sitemap: { exists: true, wellFormed: true, rootElement: 'urlset', urlCount: 1, brokenSampleUrls: [] },
   }));
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
   t.mock.method(claude, 'generateRecommendations', async () => ([]));
