@@ -19,6 +19,7 @@ let fakeGithubServer;
 let app;
 let pool;
 let redisConnection;
+let auditQueue;
 let server;
 let baseUrl;
 
@@ -133,7 +134,7 @@ test.before(async () => {
   // Required only after GITHUB_API_BASE_URL is set, so services/github.js picks it up.
   app = require('../app');
   pool = require('../db/pool');
-  ({ connection: redisConnection } = require('../jobs/queue'));
+  ({ connection: redisConnection, auditQueue } = require('../jobs/queue'));
 
   await pool.query(
     'TRUNCATE quick_scans, subscriptions, audits, monitored_domains, team_members, teams, users RESTART IDENTITY CASCADE'
@@ -148,6 +149,11 @@ test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await new Promise((resolve) => fakeGithubServer.close(resolve));
   await pool.end();
+  // No worker runs during `npm test`, so any audits enqueued via POST
+  // /api/audit above just sit in Redis — obliterate them so they don't get
+  // drained with real API keys the next time the worker (merged into
+  // server.js) actually starts.
+  await auditQueue.obliterate({ force: true });
   redisConnection.disconnect();
 });
 

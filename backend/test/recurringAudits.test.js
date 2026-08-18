@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
-const { connection: redisConnection } = require('../jobs/queue');
+const { connection: redisConnection, auditQueue } = require('../jobs/queue');
 const { runDueRecurringAudits } = require('../jobs/recurringAudits');
 
 function uniqueEmail(label) {
@@ -43,6 +43,11 @@ test.before(async () => {
 
 test.after(async () => {
   await pool.end();
+  // The audits enqueued above (via runDueRecurringAudits -> createAudit) are
+  // never consumed by a worker during `npm test`, so they'd otherwise pile
+  // up in Redis and get drained with real API keys the next time the
+  // worker (merged into server.js) actually starts.
+  await auditQueue.obliterate({ force: true });
   redisConnection.disconnect();
 });
 

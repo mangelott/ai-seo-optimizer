@@ -51,7 +51,27 @@ CREATE TABLE IF NOT EXISTS audits (
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS is_shared BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS share_token UUID DEFAULT gen_random_uuid();
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS gsc_result JSONB;
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS crawl_status TEXT;
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS pages_crawled_count INTEGER;
 CREATE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token);
+
+-- Site-wide crawl (Pro/Agency): one row per page found by the DataForSEO
+-- on_page/task_post crawl, populated once the crawl completes.
+CREATE TABLE IF NOT EXISTS crawled_pages (
+  id SERIAL PRIMARY KEY,
+  audit_id INTEGER REFERENCES audits(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  status_code INTEGER,
+  title TEXT,
+  meta_description TEXT,
+  h1_count INTEGER,
+  word_count INTEGER,
+  canonical_url TEXT,
+  is_indexable BOOLEAN,
+  load_time_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_crawled_pages_audit_id ON crawled_pages(audit_id);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,

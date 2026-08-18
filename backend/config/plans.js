@@ -5,6 +5,7 @@ const PLANS = {
     auditsPerMonth: 0,
     maxDomains: 1,
     categories: ['technical', 'content'],
+    siteWideCrawl: false,
   },
   starter: {
     name: 'Starter',
@@ -12,6 +13,7 @@ const PLANS = {
     auditsPerMonth: 10,
     maxDomains: 1,
     categories: ['technical', 'content'],
+    siteWideCrawl: false,
   },
   pro: {
     name: 'Pro',
@@ -19,6 +21,7 @@ const PLANS = {
     auditsPerMonth: 100,
     maxDomains: 10,
     categories: ['technical', 'content', 'keywords', 'backlinks'],
+    siteWideCrawl: true,
   },
   agency: {
     name: 'Agency',
@@ -26,6 +29,7 @@ const PLANS = {
     auditsPerMonth: null,
     maxDomains: null,
     categories: ['technical', 'content', 'keywords', 'backlinks'],
+    siteWideCrawl: true,
   },
 };
 

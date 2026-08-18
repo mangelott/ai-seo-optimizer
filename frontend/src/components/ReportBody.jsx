@@ -31,6 +31,11 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
   const tabFixes = fixes.filter((f) => f.category === tab);
   const activeFixes = severity === 'all' ? tabFixes : tabFixes.filter((f) => f.severity === severity);
 
+  const siteCrawl = audit.crawl_status === 'completed' && audit.technical_result?.crawlType === 'site_wide'
+    ? audit.technical_result
+    : null;
+  const brokenLinks = siteCrawl ? siteCrawl.pages4xx + siteCrawl.pages5xx : 0;
+
   return (
     <>
       <div className={styles.header}>
@@ -72,6 +77,44 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
             <span className={styles.gscLabel}>{t('report.gscPosition')}</span>
           </div>
         </div>
+      )}
+
+      {siteCrawl && (
+        <div className={styles.siteOverview}>
+          <div className={styles.siteOverviewTitle}>{t('report.siteOverviewTitle')}</div>
+          <div className={styles.siteOverviewStats}>
+            <div className={styles.gscStat}>
+              <span className={styles.gscValue}>{audit.pages_crawled_count ?? siteCrawl.pagesCrawled}</span>
+              <span className={styles.gscLabel}>{t('report.pagesCrawled')}</span>
+            </div>
+            <div className={styles.gscStat}>
+              <span className={styles.gscValue}>{siteCrawl.duplicateTitles.length}</span>
+              <span className={styles.gscLabel}>{t('report.duplicateTitles')}</span>
+            </div>
+            <div className={styles.gscStat}>
+              <span className={styles.gscValue}>{brokenLinks}</span>
+              <span className={styles.gscLabel}>{t('report.brokenLinks')}</span>
+            </div>
+          </div>
+          {siteCrawl.duplicateTitles.length > 0 && (
+            <div className={styles.duplicateTitlesList}>
+              {siteCrawl.duplicateTitles.slice(0, 5).map((d) => (
+                <span key={d.title} className={styles.duplicateTitleChip}>
+                  {d.title} (&times;{d.count})
+                </span>
+              ))}
+              {siteCrawl.duplicateTitles.length > 5 && (
+                <span className={styles.duplicateTitleChip}>
+                  +{siteCrawl.duplicateTitles.length - 5}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {audit.crawl_status === 'failed' && (
+        <div className={styles.siteOverviewFailed}>{t('report.siteOverviewFailed')}</div>
       )}
 
       <div className={styles.impactBarWrap}>

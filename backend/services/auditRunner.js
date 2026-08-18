@@ -24,6 +24,7 @@ async function createAudit({ userId, domain, language, planKey, categories, noti
     auditId,
     domain,
     categories,
+    planKey,
     language: language || 'en',
     notifyEmail,
   });

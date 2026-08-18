@@ -87,6 +87,57 @@
   }
 }
 
+.siteOverview {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.siteOverviewTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.siteOverviewStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.duplicateTitlesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.duplicateTitleChip {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.siteOverviewFailed {
+  font-size: 13px;
+  color: var(--text-faint);
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 560px) {
+  .siteOverviewStats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .impactBarWrap {
   margin-bottom: 24px;
 }

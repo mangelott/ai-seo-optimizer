@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const app = require('../app');
 const pool = require('../db/pool');
-const { connection: redisConnection } = require('../jobs/queue');
+const { connection: redisConnection, auditQueue } = require('../jobs/queue');
 
 const FAKE_WP_USER = 'ai-seo-tester';
 const FAKE_WP_PASSWORD = 'app-password-1234';
@@ -90,6 +90,11 @@ test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await new Promise((resolve) => fakeWpServer.close(resolve));
   await pool.end();
+  // No worker runs during `npm test`, so any audits enqueued via POST
+  // /api/audit above just sit in Redis — obliterate them so they don't get
+  // drained with real API keys the next time the worker (merged into
+  // server.js) actually starts.
+  await auditQueue.obliterate({ force: true });
   redisConnection.disconnect();
 });
 

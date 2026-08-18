@@ -1,7 +1,12 @@
 const axios = require('axios');
 
+// Overridable so integration tests can point this at a local fake DataForSEO
+// API instead of stubbing every method — exercises the real request-building
+// code in this file and in services/siteCrawl.js (which reuses this client).
+const DATAFORSEO_API = process.env.DATAFORSEO_API_BASE_URL || 'https://api.dataforseo.com/v3';
+
 const client = axios.create({
-  baseURL: 'https://api.dataforseo.com/v3',
+  baseURL: DATAFORSEO_API,
   auth: {
     username: process.env.DATAFORSEO_LOGIN,
     password: process.env.DATAFORSEO_PASSWORD,
@@ -27,4 +32,4 @@ async function getBacklinkSummary(domain) {
   return data.tasks?.[0]?.result?.[0] ?? null;
 }
 
-module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary };
+module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary, client };
