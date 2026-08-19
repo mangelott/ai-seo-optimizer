@@ -62,6 +62,13 @@ test('system prompt instructs the model to correct existing structured data inst
   assert.match(buildSystemPrompt('en'), /CORRECTION/);
 });
 
+test('system prompt caps readability fixes at medium severity and requires they still be included', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /readabilityLabel/);
+  assert.match(prompt, /severity "medium"/);
+  assert.match(prompt, /never "high"/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);

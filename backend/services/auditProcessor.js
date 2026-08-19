@@ -231,7 +231,7 @@ async function processAuditJob(job) {
         : dataforseo.getOnPageAudit(domain).catch(() => null)
       : Promise.resolve(null),
     content: categories.includes('content')
-      ? contentAnalysis.analyzeContent(domain).catch(() => null)
+      ? contentAnalysis.analyzeContent(domain, language).catch(() => null)
       : Promise.resolve(null),
     backlinks: categories.includes('backlinks')
       ? dataforseo.getBacklinkSummary(domain).catch(() => null)

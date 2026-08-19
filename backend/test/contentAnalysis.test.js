@@ -140,6 +140,19 @@ function buildFakeServer() {
     res.send(`<html><head><title>No schema page</title></head><body><h1>Hello</h1></body></html>`);
   });
 
+  api.get('/easy-en', (req, res) => {
+    res.send(`<html><head><title>Easy page</title></head><body>
+      <p>The cat sat on the mat. The dog ran fast. Birds sing songs. I like cake.</p>
+      <script>var junk = "this is not prose and should not affect the score";</script>
+      </body></html>`);
+  });
+
+  api.get('/easy-pt', (req, res) => {
+    res.send(`<html><head><title>Página fácil</title></head><body>
+      <p>O cão é bom. O sol é forte. Eu vou lá. Ela tem pão.</p>
+      </body></html>`);
+  });
+
   return api;
 }
 
@@ -171,4 +184,21 @@ test('analyzeContent: invalid JSON-LD comes through as an error entry', async ()
 test('analyzeContent: page with no JSON-LD returns an empty structuredData array', async () => {
   const result = await analyzeContent(`${baseUrl}/no-jsonld`);
   assert.deepEqual(result.structuredData, []);
+});
+
+test('analyzeContent: wires readabilityScore/readabilityLabel for English content, ignoring script text', async () => {
+  const result = await analyzeContent(`${baseUrl}/easy-en`, 'en');
+  assert.equal(result.readabilityLabel, 'easy');
+  assert.ok(result.readabilityScore >= 60, `expected readabilityScore >= 60, got ${result.readabilityScore}`);
+});
+
+test('analyzeContent: wires readabilityScore/readabilityLabel for Portuguese content (no numeric score)', async () => {
+  const result = await analyzeContent(`${baseUrl}/easy-pt`, 'pt');
+  assert.equal(result.readabilityLabel, 'easy');
+  assert.equal(result.readabilityScore, null);
+});
+
+test('analyzeContent: defaults to English readability scoring when no language is passed', async () => {
+  const result = await analyzeContent(`${baseUrl}/easy-en`);
+  assert.equal(result.readabilityLabel, 'easy');
 });

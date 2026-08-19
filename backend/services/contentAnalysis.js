@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { scoreReadability } = require('./readability');
 
 // Minimal required-field checklist per schema.org type, just enough to catch
 // the most common authoring mistakes (missing required properties) — not a
@@ -89,7 +90,7 @@ function extractStructuredData($) {
     .get();
 }
 
-async function analyzeContent(url) {
+async function analyzeContent(url, language = 'en') {
   const { data: html } = await axios.get(url, { timeout: 10000 });
   const $ = cheerio.load(html);
 
@@ -105,6 +106,11 @@ async function analyzeContent(url) {
     .filter(Boolean);
   const structuredData = extractStructuredData($);
 
+  // Script/style content isn't prose, so it's excluded here even though the
+  // existing wordCount above (kept as-is, for compatibility) doesn't bother.
+  const bodyText = $('body').clone().find('script, style').remove().end().text();
+  const readability = scoreReadability(bodyText, language);
+
   return {
     title,
     titleLength: title.length,
@@ -117,6 +123,8 @@ async function analyzeContent(url) {
     imagesMissingAlt: imagesMissingAltSrcs.length,
     imagesMissingAltSrcs,
     structuredData,
+    readabilityScore: readability?.score ?? null,
+    readabilityLabel: readability?.label ?? null,
   };
 }
 
