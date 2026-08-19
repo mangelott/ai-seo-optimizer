@@ -6,6 +6,7 @@ const PLANS = {
     maxDomains: 1,
     categories: ['technical', 'content'],
     siteWideCrawl: false,
+    aeoQueriesPerMonth: 0,
   },
   starter: {
     name: 'Starter',
@@ -14,6 +15,7 @@ const PLANS = {
     maxDomains: 1,
     categories: ['technical', 'content'],
     siteWideCrawl: false,
+    aeoQueriesPerMonth: 0,
   },
   pro: {
     name: 'Pro',
@@ -22,6 +24,10 @@ const PLANS = {
     maxDomains: 10,
     categories: ['technical', 'content', 'keywords', 'backlinks'],
     siteWideCrawl: true,
+    // Each check queries both ChatGPT and Perplexity (2 paid API calls), so this
+    // caps real per-query cost — unlike `categories`, which only gates DataForSEO
+    // calls already covered by the subscription price.
+    aeoQueriesPerMonth: 20,
   },
   agency: {
     name: 'Agency',
@@ -30,6 +36,7 @@ const PLANS = {
     maxDomains: null,
     categories: ['technical', 'content', 'keywords', 'backlinks'],
     siteWideCrawl: true,
+    aeoQueriesPerMonth: 100,
   },
 };
 

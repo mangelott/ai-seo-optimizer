@@ -95,6 +95,38 @@ CREATE TABLE IF NOT EXISTS page_links (
 );
 CREATE INDEX IF NOT EXISTS idx_page_links_audit_id ON page_links(audit_id);
 
+-- AEO (Answer Engine Optimization) tracking: which queries a user wants
+-- monitored for citations of their domain in AI assistant answers, and the
+-- checks logged for each one over time. Modeled as time-series tracking
+-- (like Core Web Vitals field data), not a per-audit result, since a single
+-- audit run has no natural relationship to "was this cited this week" —
+-- checks are driven by jobs/aeoTracking.js on its own schedule.
+CREATE TABLE IF NOT EXISTS aeo_target_queries (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  query TEXT NOT NULL,
+  last_checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, domain, query)
+);
+CREATE INDEX IF NOT EXISTS idx_aeo_target_queries_user_domain ON aeo_target_queries(user_id, domain);
+
+-- One row per provider per check (a single target query check produces up to
+-- one row per provider in jobs/aeoTracking.js's PROVIDERS list).
+CREATE TABLE IF NOT EXISTS aeo_queries (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  query TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  cited BOOLEAN NOT NULL,
+  response_snippet TEXT,
+  checked_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_aeo_queries_user_domain ON aeo_queries(user_id, domain);
+CREATE INDEX IF NOT EXISTS idx_aeo_queries_checked_at ON aeo_queries(checked_at);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

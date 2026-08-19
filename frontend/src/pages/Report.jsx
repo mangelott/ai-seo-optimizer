@@ -13,6 +13,7 @@ import styles from './Report.module.css';
 const PdfExportLink = lazy(() => import('../components/PdfExportLink'));
 
 const PDF_PLANS = ['pro', 'agency'];
+const AEO_PLANS = ['pro', 'agency'];
 
 export default function Report() {
   const { t } = useTranslation();
@@ -25,6 +26,9 @@ export default function Report() {
   const [shareBusy, setShareBusy] = useState(false);
   const [autoFixAvailable, setAutoFixAvailable] = useState(false);
   const [team, setTeam] = useState(null);
+  const [aeoData, setAeoData] = useState(null);
+  const [aeoBusy, setAeoBusy] = useState(false);
+  const [aeoError, setAeoError] = useState(null);
 
   useEffect(() => {
     api.get(`/audit/${id}`).then(({ data }) => setAudit(data));
@@ -52,6 +56,38 @@ export default function Report() {
       if (sameDomain[0]) setPreviousScore(sameDomain[0].score);
     });
   }, [audit]);
+
+  const aeoAvailable = AEO_PLANS.includes(plan);
+
+  function refetchAeo() {
+    if (!audit || !aeoAvailable) return;
+    api.get(`/aeo/score?domain=${encodeURIComponent(audit.domain)}`).then(({ data }) => setAeoData(data));
+  }
+
+  useEffect(refetchAeo, [audit?.domain, aeoAvailable]);
+
+  async function addAeoQuery(query) {
+    setAeoBusy(true);
+    setAeoError(null);
+    try {
+      await api.post('/aeo/queries', { domain: audit.domain, query });
+      refetchAeo();
+    } catch (err) {
+      setAeoError(err.response?.data?.error || err.message);
+      throw err;
+    } finally {
+      setAeoBusy(false);
+    }
+  }
+
+  async function deleteAeoQuery(id) {
+    try {
+      await api.delete(`/aeo/queries/${id}`);
+      refetchAeo();
+    } catch (err) {
+      setAeoError(err.response?.data?.error || err.message);
+    }
+  }
 
   async function toggleShare() {
     setShareBusy(true);
@@ -102,6 +138,12 @@ export default function Report() {
         delta={delta}
         autoFixAvailable={autoFixAvailable}
         onApplyFix={applyFix}
+        aeoAvailable={aeoAvailable}
+        aeoData={aeoData}
+        aeoBusy={aeoBusy}
+        aeoError={aeoError}
+        onAddAeoQuery={addAeoQuery}
+        onDeleteAeoQuery={deleteAeoQuery}
         headerActions={
           <>
             {PDF_PLANS.includes(plan) ? (

@@ -177,6 +177,24 @@ Gestão da equipa (convidar, remover membros, editar white-label, eliminar equip
 
 Código pronto em `backend/services/serpAnalysis.js`, `backend/services/contentGap.js`, integrado em `backend/services/auditProcessor.js` — não precisa de nenhuma configuração adicional além das já existentes (`DATAFORSEO_LOGIN`/`PASSWORD`, `ANTHROPIC_API_KEY`); ativa-se automaticamente sempre que a categoria `keywords` está incluída no plano (Pro/Agency). Para cada uma das keywords com maior volume de pesquisa entre as sugeridas para o domínio (no máximo 3, configurável via `CONTENT_GAP_MAX_KEYWORDS`, para controlar custos de SERP e de IA), a auditoria: pesquisa o top 10 real do Google para essa keyword (`serp/google/organic/live/regular` da DataForSEO); analisa o conteúdo de cada um desses concorrentes (reaproveitando `backend/services/contentAnalysis.js`, em paralelo); e pede à IA para identificar subtemas ou entidades que a maioria dos concorrentes cobre mas a página do utilizador não. O resultado fica em `audits.content_gap_result` e aparece no relatório num separador "Cobertura de tema", com os subtemas em falta priorizados por quantos concorrentes os cobrem. Como as restantes categorias, uma falha (numa keyword específica, ou na análise toda) nunca bloqueia o resto da auditoria — fica `null`/entradas em falta no relatório.
 
+## AEO Score — tracking de citações em IA (planos Pro/Agency)
+
+Código pronto em `backend/services/aeoTracking.js` (chama os providers), `backend/jobs/aeoTracking.js` (job recorrente) e `backend/routes/aeo.js` (gestão de queries-alvo e cálculo do score). Diferente das restantes categorias de auditoria, isto **não corre dentro do fluxo síncrono de uma auditoria** — é tracking ao longo do tempo, com o seu próprio job (`cron.schedule('30 2 * * *', ...)` em `backend/server.js`, correndo diariamente e verificando quais das queries-alvo já passaram do intervalo de 7 dias desde a última verificação, tal como `jobs/recurringAudits.js` faz para as auditorias recorrentes).
+
+Para cada domínio, o utilizador define até 10 "queries-alvo" (perguntas reais que um cliente poderia fazer a um assistente de IA, ex.: "melhores cafés em Lisboa") no separador "Visibilidade em IA" do relatório. O job recorrente pergunta essa query ao ChatGPT (`OPENAI_API_KEY`) e ao Perplexity (`PERPLEXITY_API_KEY`), e verifica se o domínio do utilizador aparece mencionado na resposta (`detectCitation`). O **AEO Score** (0-100) é a percentagem de queries-alvo citadas por pelo menos um dos dois providers na verificação mais recente.
+
+Para ativar isto no teu backend:
+1. Cria uma API key em [platform.openai.com](https://platform.openai.com/api-keys) e preenche `OPENAI_API_KEY` no `.env`.
+2. Cria uma API key em [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api) e preenche `PERPLEXITY_API_KEY` no `.env`.
+
+Sem estas chaves configuradas, cada verificação falha silenciosamente para esse provider (fica registado nos logs do servidor) — não bloqueia o resto do job nem a app.
+
+**Google AI Overview**: a Google não tem uma API oficial para o AI Overview, e o provider de SERP já usado neste projeto (DataForSEO, em `backend/services/dataforseo.js` / `backend/services/serpAnalysis.js`) não o expõe. Por isso, para já, isto **não é suportado automaticamente** — `queryGoogleAiOverview` em `backend/services/aeoTracking.js` existe só para deixar isto explícito (rejeita sempre com uma mensagem clara), em vez de fingir suporte com um resultado vazio. Antes de tentar construir scraping próprio para isto, vale a pena verificar primeiro se o DataForSEO (ou outro provider de SERP) passa a expor este dado.
+
+**Custos e limites de plano**: cada verificação é uma chamada paga a duas APIs externas (OpenAI + Perplexity), ao contrário de outras categorias como `technical`/`content` cujo custo já está incluído na subscrição DataForSEO. Por isso o tracking AEO tem um limite explícito de queries verificadas por mês em `backend/config/plans.js` (`aeoQueriesPerMonth`) — `0` em Free/Starter (não incluído), `20`/mês em Pro, `100`/mês em Agency — nunca ilimitado, mesmo no Agency.
+
+**Nota sobre termos de serviço**: antes de ativar isto em produção com tráfego real, confirma os termos de serviço atuais da OpenAI e da Perplexity relativamente ao uso automatizado das suas APIs para tracking de citações — este tipo de restrição muda com frequência.
+
 ## Deploy
 
 ### Backend + worker (Render)

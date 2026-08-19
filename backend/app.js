@@ -12,6 +12,7 @@ const gscRoutes = require('./routes/gsc');
 const wordpressRoutes = require('./routes/wordpress');
 const teamsRoutes = require('./routes/teams');
 const githubRoutes = require('./routes/github');
+const aeoRoutes = require('./routes/aeo');
 
 const app = express();
 
@@ -34,5 +35,6 @@ app.use('/api/gsc', gscRoutes);
 app.use('/api/wordpress', wordpressRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/github', githubRoutes);
+app.use('/api/aeo', aeoRoutes);
 
 module.exports = app;

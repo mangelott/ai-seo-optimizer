@@ -39,3 +39,16 @@ test('agency plan is unlimited on both axes', () => {
   assert.equal(PLANS.agency.auditsPerMonth, null);
   assert.equal(PLANS.agency.maxDomains, null);
 });
+
+test('AEO tracking is capped on every plan, never unlimited — each check is a real paid API call', () => {
+  for (const plan of Object.values(PLANS)) {
+    assert.ok(Number.isFinite(plan.aeoQueriesPerMonth), `${plan.name} must define a finite aeoQueriesPerMonth`);
+  }
+});
+
+test('only Pro and Agency include AEO tracking', () => {
+  assert.equal(PLANS.free.aeoQueriesPerMonth, 0);
+  assert.equal(PLANS.starter.aeoQueriesPerMonth, 0);
+  assert.ok(PLANS.pro.aeoQueriesPerMonth > 0);
+  assert.ok(PLANS.agency.aeoQueriesPerMonth > PLANS.pro.aeoQueriesPerMonth);
+});

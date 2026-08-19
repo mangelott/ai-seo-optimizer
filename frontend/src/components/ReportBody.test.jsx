@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import '../i18n';
 import i18n from '../i18n';
@@ -160,5 +160,82 @@ describe('ReportBody — topic coverage tab', () => {
 
     expect(screen.getByText('melhor café lisboa')).toBeInTheDocument();
     expect(screen.getByText('Coberto por 3 de 4 concorrentes')).toBeInTheDocument();
+  });
+});
+
+describe('ReportBody — AI visibility (AEO) tab', () => {
+  it('does not show the tab when aeoAvailable is falsy', () => {
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable={false} />);
+    expect(screen.queryByText('AI visibility')).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state when there are no tracked queries yet', () => {
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable aeoData={{ score: null, queries: [] }} />);
+    fireEvent.click(screen.getByText('AI visibility'));
+    expect(screen.getByText(/No queries tracked yet/)).toBeInTheDocument();
+    expect(screen.getByText('Not enough checks yet')).toBeInTheDocument();
+  });
+
+  it('shows the score and per-provider citation badges for tracked queries', () => {
+    const aeoData = {
+      score: 50,
+      queries: [
+        {
+          id: 1,
+          query: 'best coffee lisbon',
+          lastCheckedAt: '2026-01-01T00:00:00.000Z',
+          citedByAny: true,
+          results: [
+            { provider: 'chatgpt', cited: true },
+            { provider: 'perplexity', cited: false },
+          ],
+        },
+        {
+          id: 2,
+          query: 'never checked query',
+          lastCheckedAt: null,
+          citedByAny: false,
+          results: [],
+        },
+      ],
+    };
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable aeoData={aeoData} />);
+    fireEvent.click(screen.getByText('AI visibility'));
+
+    expect(screen.getByText('50')).toBeInTheDocument();
+    expect(screen.getByText('AEO Score')).toBeInTheDocument();
+    expect(screen.getByText('best coffee lisbon')).toBeInTheDocument();
+    expect(screen.getByText('ChatGPT: Cited')).toBeInTheDocument();
+    expect(screen.getByText('Perplexity: Not cited')).toBeInTheDocument();
+    expect(screen.getByText('never checked query')).toBeInTheDocument();
+    expect(screen.getByText('ChatGPT: Not checked yet')).toBeInTheDocument();
+  });
+
+  it('calls onAddAeoQuery with the trimmed input value on submit', () => {
+    const onAdd = vi.fn().mockResolvedValue();
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable aeoData={{ score: null, queries: [] }} onAddAeoQuery={onAdd} />);
+    fireEvent.click(screen.getByText('AI visibility'));
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. best coffee shops in Lisbon'), { target: { value: '  new query  ' } });
+    fireEvent.click(screen.getByText('Track query'));
+
+    expect(onAdd).toHaveBeenCalledWith('new query');
+  });
+
+  it('calls onDeleteAeoQuery when Remove is clicked', () => {
+    const onDelete = vi.fn();
+    const aeoData = { score: 0, queries: [{ id: 7, query: 'q', lastCheckedAt: null, citedByAny: false, results: [] }] };
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable aeoData={aeoData} onDeleteAeoQuery={onDelete} />);
+    fireEvent.click(screen.getByText('AI visibility'));
+
+    fireEvent.click(screen.getByText('Remove'));
+    expect(onDelete).toHaveBeenCalledWith(7);
+  });
+
+  it('renders correctly in Portuguese', async () => {
+    await i18n.changeLanguage('pt');
+    render(<ReportBody audit={BASE_AUDIT} aeoAvailable aeoData={{ score: null, queries: [] }} />);
+    fireEvent.click(screen.getByText('Visibilidade em IA'));
+    expect(screen.getByText(/Ainda não há queries monitorizadas/)).toBeInTheDocument();
   });
 });

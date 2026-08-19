@@ -2,8 +2,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ScoreRing from './ui/ScoreRing';
 import { PillFilter, SegmentedControl } from './ui/SegmentedControl';
+import Badge from './ui/Badge';
+import Button from './ui/Button';
+import Input from './ui/Input';
 import FixCard from './FixCard';
 import styles from '../pages/Report.module.css';
+
+const AEO_PROVIDER_LABELS = { chatgpt: 'ChatGPT', perplexity: 'Perplexity' };
 
 const CATEGORIES = ['technical', 'content', 'keywords', 'backlinks'];
 const SEVERITIES = ['all', 'high', 'medium', 'low'];
@@ -15,11 +20,24 @@ function formatCwvValue(metric, entry) {
   return metric === 'cls' ? entry.value.toFixed(2) : `${Math.round(entry.value)}ms`;
 }
 
-export default function ReportBody({ audit, delta, headerActions, autoFixAvailable, onApplyFix }) {
+export default function ReportBody({
+  audit,
+  delta,
+  headerActions,
+  autoFixAvailable,
+  onApplyFix,
+  aeoAvailable,
+  aeoData,
+  aeoBusy,
+  aeoError,
+  onAddAeoQuery,
+  onDeleteAeoQuery,
+}) {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState('technical');
   const [severity, setSeverity] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
+  const [newAeoQuery, setNewAeoQuery] = useState('');
 
   const rawFixes = Array.isArray(audit.ai_recommendations) ? audit.ai_recommendations : [];
   const fixes = rawFixes.map((f, i) => ({ ...f, _trueIndex: i }));
@@ -48,7 +66,18 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
     ...CATEGORIES,
     ...(structureAvailable ? ['structure'] : []),
     ...(contentGapAvailable ? ['contentGap'] : []),
+    ...(aeoAvailable ? ['aeo'] : []),
   ];
+
+  function submitAeoQuery(e) {
+    e.preventDefault();
+    const query = newAeoQuery.trim();
+    if (!query || !onAddAeoQuery) return;
+    onAddAeoQuery(query).then(
+      () => setNewAeoQuery(''),
+      () => {}
+    );
+  }
 
   return (
     <>
@@ -183,7 +212,62 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
         />
       </div>
 
-      {tab === 'contentGap' ? (
+      {tab === 'aeo' ? (
+        <div className={styles.list}>
+          <div className={styles.aeoScoreRow}>
+            <div className={styles.aeoScoreBox}>
+              <span className={styles.aeoScoreValue}>{aeoData?.score != null ? aeoData.score : '—'}</span>
+              <span className={styles.gscLabel}>{aeoData?.score != null ? t('report.aeoScoreLabel') : t('report.aeoScoreEmpty')}</span>
+            </div>
+            <p className={styles.aeoIntro}>{t('report.aeoIntro')}</p>
+          </div>
+
+          <form className={styles.aeoAddForm} onSubmit={submitAeoQuery}>
+            <Input
+              value={newAeoQuery}
+              onChange={(e) => setNewAeoQuery(e.target.value)}
+              placeholder={t('report.aeoAddPlaceholder')}
+              disabled={aeoBusy}
+            />
+            <Button type="submit" size="sm" disabled={aeoBusy || !newAeoQuery.trim()}>
+              {aeoBusy ? t('report.aeoAdding') : t('report.aeoAddButton')}
+            </Button>
+          </form>
+          {aeoError && <div className={styles.aeoError}>{aeoError}</div>}
+
+          {!aeoData?.queries?.length ? (
+            <div className={styles.emptyCard}>{t('report.aeoEmptyState')}</div>
+          ) : (
+            aeoData.queries.map((q) => (
+              <div key={q.id} className={styles.aeoQueryRow}>
+                <div className={styles.aeoQueryHeader}>
+                  <span className={styles.aeoQueryText}>{q.query}</span>
+                  <button type="button" className={styles.aeoRemoveBtn} onClick={() => onDeleteAeoQuery?.(q.id)}>
+                    {t('report.aeoRemove')}
+                  </button>
+                </div>
+                <div className={styles.aeoProviderBadges}>
+                  {Object.keys(AEO_PROVIDER_LABELS).map((provider) => {
+                    const result = q.results?.find((r) => r.provider === provider);
+                    return (
+                      <Badge key={provider} variant={!result ? 'neutral' : result.cited ? 'success' : 'low'}>
+                        {AEO_PROVIDER_LABELS[provider]}: {!result ? t('report.aeoNotCheckedYet') : result.cited ? t('report.aeoCited') : t('report.aeoNotCited')}
+                      </Badge>
+                    );
+                  })}
+                </div>
+                <div className={styles.aeoLastChecked}>
+                  {q.lastCheckedAt
+                    ? t('report.aeoLastChecked', { date: new Date(q.lastCheckedAt).toLocaleDateString(i18n.resolvedLanguage) })
+                    : t('report.aeoNeverChecked')}
+                </div>
+              </div>
+            ))
+          )}
+
+          <p className={styles.aeoGoogleNote}>{t('report.aeoGoogleAiOverviewNote')}</p>
+        </div>
+      ) : tab === 'contentGap' ? (
         <div className={styles.list}>
           {contentGapResult.map((entry) => (
             <div key={entry.keyword} className={styles.structureSection}>
