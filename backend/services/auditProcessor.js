@@ -8,6 +8,7 @@ const contentAnalysis = require('./contentAnalysis');
 const dataforseo = require('./dataforseo');
 const siteCrawl = require('./siteCrawl');
 const linkGraph = require('./linkGraph');
+const duplicateContent = require('./duplicateContent');
 const coreWebVitals = require('./coreWebVitals');
 const crawlability = require('./crawlability');
 const serpAnalysis = require('./serpAnalysis');
@@ -278,6 +279,18 @@ async function processAuditJob(job) {
       technical.brokenInternalLinks = brokenInternalLinks;
     } catch (err) {
       console.error('Link graph analysis failed for audit', auditId, ':', err.message);
+    }
+
+    try {
+      const crawledPages = await duplicateContent.fetchCrawledPages(auditId);
+      const thinContentPages = duplicateContent.flagThinContent(crawledPages);
+      const duplicateContentGroups = duplicateContent.detectDuplicates(crawledPages);
+      technical.thinContentCount = thinContentPages.length;
+      technical.thinContentPages = thinContentPages;
+      technical.duplicateContentGroupsCount = duplicateContentGroups.length;
+      technical.duplicateContentGroups = duplicateContentGroups;
+    } catch (err) {
+      console.error('Thin/duplicate content analysis failed for audit', auditId, ':', err.message);
     }
   }
 
