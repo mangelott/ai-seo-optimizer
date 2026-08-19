@@ -41,6 +41,8 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
     ? audit.technical_result
     : null;
   const brokenLinks = siteCrawl ? siteCrawl.pages4xx + siteCrawl.pages5xx : 0;
+  const structureAvailable = siteCrawl && Array.isArray(siteCrawl.orphanPages);
+  const categories = structureAvailable ? [...CATEGORIES, 'structure'] : CATEGORIES;
 
   return (
     <>
@@ -168,45 +170,87 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
             setTab(v);
             setExpandedId(null);
           }}
-          options={CATEGORIES.map((c) => ({
+          options={categories.map((c) => ({
             value: c,
             label: t(`report.tab${c.charAt(0).toUpperCase() + c.slice(1)}`),
           }))}
         />
       </div>
 
-      <div className={styles.filtersRow}>
-        <PillFilter
-          value={severity}
-          onChange={setSeverity}
-          options={SEVERITIES.map((s) => {
-            const count = s === 'all' ? tabFixes.length : tabFixes.filter((f) => f.severity === s).length;
-            const label = s === 'all' ? t('report.filterAll') : t(`report.filter${s.charAt(0).toUpperCase() + s.slice(1)}`);
-            return { value: s, label: `${label} (${count})` };
-          })}
-        />
-      </div>
+      {tab === 'structure' ? (
+        <div className={styles.list}>
+          <div className={styles.structureSection}>
+            <div className={styles.structureSectionTitle}>
+              {t('report.orphanPagesTitle')} ({siteCrawl.orphanPages.length})
+            </div>
+            {siteCrawl.orphanPages.length === 0 ? (
+              <div className={styles.emptyCard}>{t('report.orphanPagesEmpty')}</div>
+            ) : (
+              <ul className={styles.structureList}>
+                {siteCrawl.orphanPages.map((url) => (
+                  <li key={url} className={styles.structureListItem}>
+                    {url}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className={styles.structureSection}>
+            <div className={styles.structureSectionTitle}>
+              {t('report.brokenInternalLinksTitle')} ({siteCrawl.brokenInternalLinks.length})
+            </div>
+            {siteCrawl.brokenInternalLinks.length === 0 ? (
+              <div className={styles.emptyCard}>{t('report.brokenInternalLinksEmpty')}</div>
+            ) : (
+              <ul className={styles.structureList}>
+                {siteCrawl.brokenInternalLinks.map((link, i) => (
+                  <li key={i} className={styles.structureListItem}>
+                    <span className={styles.structureLinkFrom}>{link.fromUrl}</span>
+                    {' → '}
+                    <span className={styles.structureLinkTo}>{link.toUrl}</span>{' '}
+                    <span className={styles.structureLinkStatus}>({link.statusCode})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className={styles.filtersRow}>
+            <PillFilter
+              value={severity}
+              onChange={setSeverity}
+              options={SEVERITIES.map((s) => {
+                const count = s === 'all' ? tabFixes.length : tabFixes.filter((f) => f.severity === s).length;
+                const label = s === 'all' ? t('report.filterAll') : t(`report.filter${s.charAt(0).toUpperCase() + s.slice(1)}`);
+                return { value: s, label: `${label} (${count})` };
+              })}
+            />
+          </div>
 
-      <div className={styles.list}>
-        {activeFixes.length === 0 ? (
-          <div className={styles.emptyCard}>{t('report.emptyState')}</div>
-        ) : (
-          activeFixes.map((fix, i) => {
-            const fixId = fix.id || `${tab}-${i}`;
-            return (
-              <FixCard
-                key={fixId}
-                fix={fix}
-                index={i}
-                expanded={expandedId === fixId}
-                onToggle={() => setExpandedId(expandedId === fixId ? null : fixId)}
-                autoFixAvailable={autoFixAvailable}
-                onApply={onApplyFix ? (filePath) => onApplyFix(fix._trueIndex, filePath) : undefined}
-              />
-            );
-          })
-        )}
-      </div>
+          <div className={styles.list}>
+            {activeFixes.length === 0 ? (
+              <div className={styles.emptyCard}>{t('report.emptyState')}</div>
+            ) : (
+              activeFixes.map((fix, i) => {
+                const fixId = fix.id || `${tab}-${i}`;
+                return (
+                  <FixCard
+                    key={fixId}
+                    fix={fix}
+                    index={i}
+                    expanded={expandedId === fixId}
+                    onToggle={() => setExpandedId(expandedId === fixId ? null : fixId)}
+                    autoFixAvailable={autoFixAvailable}
+                    onApply={onApplyFix ? (filePath) => onApplyFix(fix._trueIndex, filePath) : undefined}
+                  />
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }

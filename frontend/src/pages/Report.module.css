@@ -213,6 +213,51 @@
   color: var(--text-muted);
 }
 
+.structureSection {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.structureSectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.structureList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.structureListItem {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 8px 12px;
+  word-break: break-all;
+}
+
+.structureLinkFrom {
+  color: var(--text-muted);
+}
+
+.structureLinkTo {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.structureLinkStatus {
+  color: var(--danger);
+}
+
 .shareBox {
   display: flex;
   align-items: center;

@@ -76,6 +76,24 @@ CREATE TABLE IF NOT EXISTS crawled_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_crawled_pages_audit_id ON crawled_pages(audit_id);
 
+-- Internal link graph (Pro/Agency site-wide crawl): one row per internal
+-- link found between two crawled pages, populated alongside crawled_pages
+-- once the crawl completes. Used to detect orphan pages (no incoming
+-- internal link) and broken internal links (pointing at a 4xx/5xx page).
+-- to_page_id is NULL when the link target wasn't itself crawled (e.g. the
+-- crawl's page limit was reached) — to_url is always kept so detection can
+-- still match it against the sitemap or crawled_pages by URL.
+CREATE TABLE IF NOT EXISTS page_links (
+  id SERIAL PRIMARY KEY,
+  audit_id INTEGER REFERENCES audits(id) ON DELETE CASCADE,
+  from_page_id INTEGER REFERENCES crawled_pages(id) ON DELETE CASCADE,
+  to_page_id INTEGER REFERENCES crawled_pages(id) ON DELETE SET NULL,
+  to_url TEXT NOT NULL,
+  anchor_text TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_page_links_audit_id ON page_links(audit_id);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

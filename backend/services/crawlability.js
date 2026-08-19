@@ -114,7 +114,7 @@ async function checkSitemap(sitemapUrl) {
   }
 
   if (raw == null) {
-    return { exists: false, wellFormed: false, rootElement: null, urlCount: 0, brokenSampleUrls: [], url: sitemapUrl };
+    return { exists: false, wellFormed: false, rootElement: null, urlCount: 0, brokenSampleUrls: [], urls: [], url: sitemapUrl };
   }
 
   const rootElement = detectRootElement(raw);
@@ -138,6 +138,7 @@ async function checkSitemap(sitemapUrl) {
     urlCount: urls.length,
     sampledUrlCount: sample.length,
     brokenSampleUrls,
+    urls,
     url: sitemapUrl,
   };
 }

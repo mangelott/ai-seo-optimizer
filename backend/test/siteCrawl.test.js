@@ -73,6 +73,18 @@ const CRAWL_PAGES = [
   },
 ];
 
+// Internal links found across CRAWL_PAGES: home links to about and to the
+// 404 (a broken internal link), about links back to home and to the 500
+// (another broken internal link). /contact is deliberately not a target of
+// any of these so a sitemap that lists it exercises the orphan-page case.
+const CRAWL_LINKS = [
+  { page_from: 'https://crawl-site.com/', page_to: 'https://crawl-site.com/about', anchor: 'About', direction: 'internal' },
+  { page_from: 'https://crawl-site.com/', page_to: 'https://crawl-site.com/missing', anchor: 'Old link', direction: 'internal' },
+  { page_from: 'https://crawl-site.com/about', page_to: 'https://crawl-site.com/', anchor: 'Home', direction: 'internal' },
+  { page_from: 'https://crawl-site.com/about', page_to: 'https://crawl-site.com/error', anchor: 'Broken', direction: 'internal' },
+  { page_from: 'https://crawl-site.com/', page_to: 'https://external-site.com/', anchor: 'External', direction: 'external' },
+];
+
 // Readiness behaviour is derived from the target domain so each test can
 // pick its own scenario without shared mutable state between tests:
 // "timeout" never becomes ready, "slow" takes 3 polls, everything else is
@@ -105,6 +117,13 @@ function buildFakeDataForSeoServer() {
     if (!tasks.has(id)) return res.json({ tasks: [{ result: [{ items: [], total_items_count: 0 }] }] });
     const items = CRAWL_PAGES.slice(offset, offset + limit);
     res.json({ tasks: [{ result: [{ items, total_items_count: CRAWL_PAGES.length }] }] });
+  });
+
+  api.post('/on_page/links', (req, res) => {
+    const { id, limit, offset } = req.body[0];
+    if (!tasks.has(id)) return res.json({ tasks: [{ result: [{ items: [], total_items_count: 0 }] }] });
+    const items = CRAWL_LINKS.slice(offset, offset + limit);
+    res.json({ tasks: [{ result: [{ items, total_items_count: CRAWL_LINKS.length }] }] });
   });
 
   return api;
@@ -204,6 +223,78 @@ test('pro plan: technical audit goes through the site-wide crawl, not instant_pa
   assert.equal(pagesRows.rows.length, 4);
   assert.equal(pagesRows.rows[0].url, 'https://crawl-site.com/');
   assert.equal(pagesRows.rows[2].status_code, 404);
+});
+
+test('pro plan: internal links are captured into page_links, resolving to_page_id when the target was also crawled', async (t) => {
+  stubNonTechnicalServices(t);
+  t.mock.method(dataforseo, 'getOnPageAudit', async () => ({}));
+
+  const userId = await createUser(uniqueEmail('crawl-links'));
+  const auditId = await createAuditRow(userId, 'https://crawl-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://crawl-site.com', categories: ['technical'], planKey: 'pro' },
+  });
+
+  const linkRows = await pool.query(
+    `SELECT pl.to_url, pl.anchor_text, pl.to_page_id, cp.url AS from_url
+     FROM page_links pl JOIN crawled_pages cp ON cp.id = pl.from_page_id
+     WHERE pl.audit_id = $1 ORDER BY pl.id`,
+    [auditId]
+  );
+  // The external link is filtered out — only the 4 internal links remain.
+  assert.equal(linkRows.rows.length, 4);
+  assert.equal(linkRows.rows[0].from_url, 'https://crawl-site.com/');
+  assert.equal(linkRows.rows[0].to_url, 'https://crawl-site.com/about');
+  assert.equal(linkRows.rows[0].anchor_text, 'About');
+  assert.notEqual(linkRows.rows[0].to_page_id, null, 'the target page was also crawled, so to_page_id should resolve');
+});
+
+test('pro plan: technical_result gets orphan pages and broken internal links once the sitemap is known', async (t) => {
+  stubNonTechnicalServices(t);
+  t.mock.method(dataforseo, 'getOnPageAudit', async () => ({}));
+  t.mock.method(crawlability, 'checkCrawlability', async () => ({
+    robotsTxt: { exists: true, blocksHomepage: false, sitemapUrls: [], raw: 'User-agent: *\nAllow: /\n' },
+    sitemap: {
+      exists: true,
+      wellFormed: true,
+      rootElement: 'urlset',
+      urlCount: 5,
+      brokenSampleUrls: [],
+      url: 'https://crawl-site.com/sitemap.xml',
+      // /contact is listed in the sitemap but nothing links to it — the orphan case.
+      urls: [
+        'https://crawl-site.com/',
+        'https://crawl-site.com/about',
+        'https://crawl-site.com/missing',
+        'https://crawl-site.com/error',
+        'https://crawl-site.com/contact',
+      ],
+    },
+  }));
+
+  const userId = await createUser(uniqueEmail('crawl-orphan'));
+  const auditId = await createAuditRow(userId, 'https://crawl-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://crawl-site.com', categories: ['technical'], planKey: 'pro' },
+  });
+
+  const auditRow = await pool.query('SELECT technical_result, sitemap_result FROM audits WHERE id = $1', [auditId]);
+  const summary = auditRow.rows[0].technical_result;
+
+  assert.equal(summary.orphanPagesCount, 1);
+  assert.deepEqual(summary.orphanPages, ['https://crawl-site.com/contact']);
+
+  assert.equal(summary.brokenInternalLinksCount, 2);
+  assert.deepEqual(
+    summary.brokenInternalLinks.map((l) => l.toUrl).sort(),
+    ['https://crawl-site.com/error', 'https://crawl-site.com/missing']
+  );
+
+  // The full sitemap URL list is not persisted onto sitemap_result.
+  assert.equal(auditRow.rows[0].sitemap_result.urls, undefined);
+  assert.equal(auditRow.rows[0].sitemap_result.urlCount, 5);
 });
 
 test('free/starter plans: technical audit still uses instant_pages, no crawl rows are written', async (t) => {

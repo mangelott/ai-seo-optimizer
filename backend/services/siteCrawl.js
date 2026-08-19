@@ -37,4 +37,22 @@ async function fetchCrawlResults(taskId) {
   return pages;
 }
 
-module.exports = { startCrawl, pollCrawlStatus, fetchCrawlResults, PAGE_LIMIT };
+async function fetchLinks(taskId) {
+  const links = [];
+  let offset = 0;
+
+  while (true) {
+    const { data } = await client.post('/on_page/links', [{ id: taskId, limit: PAGE_LIMIT, offset }]);
+    const result = data.tasks?.[0]?.result?.[0];
+    const items = result?.items ?? [];
+    links.push(...items);
+    offset += items.length;
+
+    const totalCount = result?.total_items_count;
+    if (items.length === 0 || items.length < PAGE_LIMIT || (totalCount != null && offset >= totalCount)) break;
+  }
+
+  return links;
+}
+
+module.exports = { startCrawl, pollCrawlStatus, fetchCrawlResults, fetchLinks, PAGE_LIMIT };

@@ -7,6 +7,7 @@ const pool = require('../db/pool');
 const contentAnalysis = require('./contentAnalysis');
 const dataforseo = require('./dataforseo');
 const siteCrawl = require('./siteCrawl');
+const linkGraph = require('./linkGraph');
 const coreWebVitals = require('./coreWebVitals');
 const crawlability = require('./crawlability');
 const claude = require('./claude');
@@ -56,6 +57,15 @@ function normalizeCrawledPage(raw) {
   };
 }
 
+function normalizeLink(raw) {
+  return {
+    fromUrl: raw.page_from ?? null,
+    toUrl: raw.page_to ?? null,
+    anchorText: raw.anchor ?? null,
+    direction: raw.direction ?? null,
+  };
+}
+
 function summarizeCrawl(pages) {
   const pages4xx = pages.filter((p) => p.statusCode >= 400 && p.statusCode < 500).length;
   const pages5xx = pages.filter((p) => p.statusCode >= 500).length;
@@ -94,12 +104,13 @@ async function runSiteWideCrawl(auditId, domain) {
     if (!ready) throw new Error('DataForSEO crawl did not finish within the timeout');
 
     const pages = (await siteCrawl.fetchCrawlResults(taskId)).map(normalizeCrawledPage);
+    const pageIdByUrl = new Map();
 
     for (const page of pages) {
-      await pool.query(
+      const inserted = await pool.query(
         `INSERT INTO crawled_pages
          (audit_id, url, status_code, title, meta_description, h1_count, word_count, canonical_url, is_indexable, load_time_ms)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [
           auditId,
           page.url,
@@ -112,6 +123,19 @@ async function runSiteWideCrawl(auditId, domain) {
           page.isIndexable,
           page.loadTimeMs,
         ]
+      );
+      pageIdByUrl.set(linkGraph.normalizeUrlForCompare(page.url), inserted.rows[0].id);
+    }
+
+    const links = (await siteCrawl.fetchLinks(taskId)).map(normalizeLink).filter((l) => l.direction === 'internal' && l.fromUrl && l.toUrl);
+
+    for (const link of links) {
+      const fromPageId = pageIdByUrl.get(linkGraph.normalizeUrlForCompare(link.fromUrl));
+      if (!fromPageId) continue; // link reported from a page outside this crawl's page set
+      const toPageId = pageIdByUrl.get(linkGraph.normalizeUrlForCompare(link.toUrl)) ?? null;
+      await pool.query(
+        `INSERT INTO page_links (audit_id, from_page_id, to_page_id, to_url, anchor_text) VALUES ($1, $2, $3, $4, $5)`,
+        [auditId, fromPageId, toPageId, link.toUrl, link.anchorText]
       );
     }
 
@@ -197,6 +221,25 @@ async function processAuditJob(job) {
     tasks.gsc,
   ]);
 
+  // Orphan-page/broken-internal-link detection needs both the crawl's own
+  // page_links (from `technical`) and the sitemap's URL inventory (from
+  // `crawlabilityResult`), so it can only run once both tasks above have
+  // settled — never blocks the rest of the audit if it errors.
+  if (technical?.crawlType === 'site_wide') {
+    try {
+      const sitemapUrls = crawlabilityResult?.sitemap?.urls ?? [];
+      const graph = await linkGraph.buildLinkGraph(auditId);
+      const orphanPages = linkGraph.detectOrphanPages(graph, sitemapUrls);
+      const brokenInternalLinks = linkGraph.detectBrokenInternalLinks(graph);
+      technical.orphanPagesCount = orphanPages.length;
+      technical.orphanPages = orphanPages;
+      technical.brokenInternalLinksCount = brokenInternalLinks.length;
+      technical.brokenInternalLinks = brokenInternalLinks;
+    } catch (err) {
+      console.error('Link graph analysis failed for audit', auditId, ':', err.message);
+    }
+  }
+
   const keywords =
     categories.includes('keywords') && content?.title
       ? await dataforseo.getKeywordIdeas(content.title).catch(() => null)
@@ -223,6 +266,11 @@ async function processAuditJob(job) {
   }, 0);
   const score = Math.max(0, Math.min(100, 100 - penalty));
 
+  // The full sitemap URL list only exists to feed the orphan-page check
+  // above — drop it before persisting so sitemap_result doesn't balloon on
+  // sites with large sitemaps.
+  const { urls: _sitemapUrls, ...sitemapForStorage } = crawlabilityResult?.sitemap ?? {};
+
   await pool.query(
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
      keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
@@ -238,7 +286,7 @@ async function processAuditJob(job) {
       JSON.stringify(gscResult),
       JSON.stringify(coreWebVitalsResult),
       JSON.stringify(crawlabilityResult?.robotsTxt ?? null),
-      JSON.stringify(crawlabilityResult?.sitemap ?? null),
+      JSON.stringify(crawlabilityResult?.sitemap ? sitemapForStorage : null),
       auditId,
     ]
   );
