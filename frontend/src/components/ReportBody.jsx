@@ -42,7 +42,13 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
     : null;
   const brokenLinks = siteCrawl ? siteCrawl.pages4xx + siteCrawl.pages5xx : 0;
   const structureAvailable = siteCrawl && Array.isArray(siteCrawl.orphanPages);
-  const categories = structureAvailable ? [...CATEGORIES, 'structure'] : CATEGORIES;
+  const contentGapResult = Array.isArray(audit.content_gap_result) ? audit.content_gap_result : [];
+  const contentGapAvailable = contentGapResult.length > 0;
+  const categories = [
+    ...CATEGORIES,
+    ...(structureAvailable ? ['structure'] : []),
+    ...(contentGapAvailable ? ['contentGap'] : []),
+  ];
 
   return (
     <>
@@ -177,7 +183,29 @@ export default function ReportBody({ audit, delta, headerActions, autoFixAvailab
         />
       </div>
 
-      {tab === 'structure' ? (
+      {tab === 'contentGap' ? (
+        <div className={styles.list}>
+          {contentGapResult.map((entry) => (
+            <div key={entry.keyword} className={styles.structureSection}>
+              <div className={styles.structureSectionTitle}>{entry.keyword}</div>
+              {!entry.missingSubtopics || entry.missingSubtopics.length === 0 ? (
+                <div className={styles.emptyCard}>{t('report.contentGapEmpty')}</div>
+              ) : (
+                <ul className={styles.structureList}>
+                  {entry.missingSubtopics.map((topic, i) => (
+                    <li key={i} className={styles.structureListItem}>
+                      <span className={styles.structureLinkTo}>{topic.topic}</span>{' '}
+                      <span className={styles.contentGapCoverage}>
+                        {t('report.contentGapCoverage', { count: topic.competitorsCovering, total: entry.competitorCount })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : tab === 'structure' ? (
         <div className={styles.list}>
           <div className={styles.structureSection}>
             <div className={styles.structureSectionTitle}>

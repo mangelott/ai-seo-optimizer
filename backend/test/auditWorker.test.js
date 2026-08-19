@@ -16,6 +16,8 @@ const contentAnalysis = require('../services/contentAnalysis');
 const dataforseo = require('../services/dataforseo');
 const coreWebVitals = require('../services/coreWebVitals');
 const crawlability = require('../services/crawlability');
+const serpAnalysis = require('../services/serpAnalysis');
+const contentGap = require('../services/contentGap');
 const claude = require('../services/claude');
 const email = require('../services/email');
 const googleSearchConsole = require('../services/googleSearchConsole');
@@ -59,6 +61,8 @@ function stubDefaults(t) {
     sitemap: { exists: true, wellFormed: true, rootElement: 'urlset', urlCount: 1, brokenSampleUrls: [] },
   }));
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
+  t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+  t.mock.method(contentGap, 'compareContent', async () => ([]));
   t.mock.method(claude, 'generateRecommendations', async () => ([]));
   t.mock.method(email, 'sendAuditReadyEmail', async () => {});
   t.mock.method(email, 'sendScoreDropAlertEmail', async () => {});
@@ -414,6 +418,149 @@ test('processAuditJob: fetches keyword ideas from the content title only when "k
   assert.equal(keywordsMock.mock.callCount(), 1);
   const row = await pool.query('SELECT keyword_result FROM audits WHERE id = $1', [auditId]);
   assert.deepEqual(row.rows[0].keyword_result, [{ keyword: 'coffee' }]);
+});
+
+test('processAuditJob: content gap analysis caps at the top 3 highest-volume keyword ideas and persists identified subtopics', async (t) => {
+  stubDefaults(t);
+  t.mock.method(contentAnalysis, 'analyzeContent', async (url) => {
+    if (url === 'https://worker-gap-site.com') return { title: 'Coffee shop guide', h1s: ['Coffee shop guide'], wordCount: 400 };
+    return { title: `Competitor for ${url}`, h1s: [], wordCount: 900 };
+  });
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([
+    { keyword: 'kw-low', search_volume: 50 }, // excluded: 4th by volume, cap is 3
+    { keyword: 'kw-mid', search_volume: 500 },
+    { keyword: 'kw-high', search_volume: 900 },
+    { keyword: 'kw-novolume', search_volume: 100 },
+  ]));
+  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async (keyword) => [
+    { url: `https://competitor-for-${keyword}.example.com`, title: 'A', snippet: null, rank: 1 },
+  ]);
+  const compareMock = t.mock.method(contentGap, 'compareContent', async ({ keyword, userContent, competitorContents }) => {
+    assert.equal(userContent.title, 'Coffee shop guide');
+    assert.equal(competitorContents.length, 1);
+    return [{ topic: `Topic for ${keyword}`, competitorsCovering: 1, competitorUrls: [competitorContents[0].url] }];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-gap'));
+  const auditId = await createAuditRow(userId, 'https://worker-gap-site.com');
+
+  await processAuditJob({
+    data: {
+      auditId,
+      domain: 'https://worker-gap-site.com',
+      categories: ['content', 'keywords'],
+      planKey: 'agency',
+    },
+  });
+
+  assert.equal(serpMock.mock.callCount(), 3, 'only the top 3 by search volume are analyzed');
+  assert.equal(compareMock.mock.callCount(), 3);
+  const analyzedKeywords = serpMock.mock.calls.map((call) => call.arguments[0]).sort();
+  assert.deepEqual(analyzedKeywords, ['kw-high', 'kw-mid', 'kw-novolume'], 'kw-low (lowest volume) is excluded by the cap');
+
+  const row = await pool.query('SELECT content_gap_result FROM audits WHERE id = $1', [auditId]);
+  const resultKeywords = row.rows[0].content_gap_result.map((entry) => entry.keyword).sort();
+  assert.deepEqual(resultKeywords, ['kw-high', 'kw-mid', 'kw-novolume']);
+  assert.deepEqual(
+    row.rows[0].content_gap_result.find((entry) => entry.keyword === 'kw-high'),
+    {
+      keyword: 'kw-high',
+      competitorCount: 1,
+      missingSubtopics: [
+        { topic: 'Topic for kw-high', competitorsCovering: 1, competitorUrls: ['https://competitor-for-kw-high.example.com'] },
+      ],
+    }
+  );
+});
+
+test('processAuditJob: skips content gap analysis entirely when "keywords" is not an included category', async (t) => {
+  stubDefaults(t);
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([{ keyword: 'coffee', search_volume: 100 }]));
+  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+
+  const userId = await createUser(uniqueEmail('worker-gap-nogate'));
+  const auditId = await createAuditRow(userId, 'https://worker-gap-nogate-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-gap-nogate-site.com', categories: ['content'] },
+  });
+
+  assert.equal(serpMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT content_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].content_gap_result, null);
+});
+
+test('processAuditJob: content gap analysis is skipped when there are no keyword ideas to target', async (t) => {
+  stubDefaults(t);
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+
+  const userId = await createUser(uniqueEmail('worker-gap-noideas'));
+  const auditId = await createAuditRow(userId, 'https://worker-gap-noideas-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-gap-noideas-site.com', categories: ['content', 'keywords'] },
+  });
+
+  assert.equal(serpMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT content_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].content_gap_result, null);
+});
+
+test('processAuditJob: a content gap failure for one keyword does not block the others or the rest of the audit', async (t) => {
+  stubDefaults(t);
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([
+    { keyword: 'good keyword', search_volume: 100 },
+    { keyword: 'bad keyword', search_volume: 900 },
+  ]));
+  t.mock.method(serpAnalysis, 'getTopResults', async (keyword) => {
+    if (keyword === 'bad keyword') throw new Error('DataForSEO SERP timeout');
+    return [{ url: 'https://ok-competitor.example.com', title: 'ok', snippet: null, rank: 1 }];
+  });
+  t.mock.method(contentGap, 'compareContent', async () => ([{ topic: 'Topic X', competitorsCovering: 1, competitorUrls: [] }]));
+
+  const userId = await createUser(uniqueEmail('worker-gap-partialfail'));
+  const auditId = await createAuditRow(userId, 'https://worker-gap-partialfail-site.com');
+
+  await assert.doesNotReject(
+    processAuditJob({
+      data: {
+        auditId,
+        domain: 'https://worker-gap-partialfail-site.com',
+        categories: ['content', 'keywords'],
+      },
+    })
+  );
+
+  const row = await pool.query('SELECT status, content_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.deepEqual(row.rows[0].content_gap_result, [
+    { keyword: 'good keyword', competitorCount: 1, missingSubtopics: [{ topic: 'Topic X', competitorsCovering: 1, competitorUrls: [] }] },
+  ]);
+});
+
+test('processAuditJob: a keyword with no competitor pages that could be analyzed is dropped from the results', async (t) => {
+  stubDefaults(t);
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([{ keyword: 'unreachable competitors', search_volume: 100 }]));
+  t.mock.method(serpAnalysis, 'getTopResults', async () => ([
+    { url: 'https://down.example.com', title: null, snippet: null, rank: 1 },
+  ]));
+  t.mock.method(contentAnalysis, 'analyzeContent', async (url) => {
+    if (url === 'https://down.example.com') throw new Error('ECONNREFUSED');
+    return { title: 'Some Title', h1s: [], wordCount: 100 };
+  });
+  const compareMock = t.mock.method(contentGap, 'compareContent', async () => ([{ topic: 'Should not be called' }]));
+
+  const userId = await createUser(uniqueEmail('worker-gap-nocompetitors'));
+  const auditId = await createAuditRow(userId, 'https://worker-gap-nocompetitors-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-gap-nocompetitors-site.com', categories: ['content', 'keywords'] },
+  });
+
+  assert.equal(compareMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT content_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].content_gap_result, []);
 });
 
 test('processAuditJob: a Claude failure degrades to zero recommendations and a perfect score, without crashing', async (t) => {

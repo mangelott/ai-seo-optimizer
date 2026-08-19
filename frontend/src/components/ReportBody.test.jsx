@@ -92,3 +92,73 @@ describe('ReportBody — site structure tab', () => {
     expect(screen.getByText('Ligações internas partidas (1)')).toBeInTheDocument();
   });
 });
+
+function contentGapAudit(contentGapResult) {
+  return { ...BASE_AUDIT, content_gap_result: contentGapResult };
+}
+
+describe('ReportBody — topic coverage tab', () => {
+  it('does not show a "Topic coverage" tab when the audit has no content gap result', () => {
+    render(<ReportBody audit={BASE_AUDIT} />);
+    expect(screen.queryByText('Topic coverage')).not.toBeInTheDocument();
+  });
+
+  it('does not show the tab when content_gap_result is an empty array', () => {
+    render(<ReportBody audit={contentGapAudit([])} />);
+    expect(screen.queryByText('Topic coverage')).not.toBeInTheDocument();
+  });
+
+  it('shows missing subtopics grouped by keyword, sorted as provided, with coverage counts', () => {
+    const audit = contentGapAudit([
+      {
+        keyword: 'best coffee lisbon',
+        competitorCount: 8,
+        missingSubtopics: [
+          { topic: 'Delivery times', competitorsCovering: 6, competitorUrls: [] },
+          { topic: 'Pricing', competitorsCovering: 3, competitorUrls: [] },
+        ],
+      },
+    ]);
+    render(<ReportBody audit={audit} />);
+
+    fireEvent.click(screen.getByText('Topic coverage'));
+
+    expect(screen.getByText('best coffee lisbon')).toBeInTheDocument();
+    expect(screen.getByText('Delivery times')).toBeInTheDocument();
+    expect(screen.getByText('Covered by 6 of 8 competitors')).toBeInTheDocument();
+    expect(screen.getByText('Pricing')).toBeInTheDocument();
+    expect(screen.getByText('Covered by 3 of 8 competitors')).toBeInTheDocument();
+  });
+
+  it('shows an empty state for a keyword with no missing subtopics', () => {
+    const audit = contentGapAudit([{ keyword: 'well covered keyword', competitorCount: 5, missingSubtopics: [] }]);
+    render(<ReportBody audit={audit} />);
+
+    fireEvent.click(screen.getByText('Topic coverage'));
+
+    expect(screen.getByText('well covered keyword')).toBeInTheDocument();
+    expect(screen.getByText(/covers everything the top-ranking competitors do/)).toBeInTheDocument();
+  });
+
+  it('hides the severity filter row while the topic coverage tab is active', () => {
+    const audit = contentGapAudit([{ keyword: 'kw', competitorCount: 1, missingSubtopics: [] }]);
+    render(<ReportBody audit={audit} />);
+    expect(screen.getByText('All (0)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Topic coverage'));
+    expect(screen.queryByText(/^All \(/)).not.toBeInTheDocument();
+  });
+
+  it('renders correctly in Portuguese', async () => {
+    await i18n.changeLanguage('pt');
+    const audit = contentGapAudit([
+      { keyword: 'melhor café lisboa', competitorCount: 4, missingSubtopics: [{ topic: 'Preços', competitorsCovering: 3, competitorUrls: [] }] },
+    ]);
+    render(<ReportBody audit={audit} />);
+
+    fireEvent.click(screen.getByText('Cobertura de tema'));
+
+    expect(screen.getByText('melhor café lisboa')).toBeInTheDocument();
+    expect(screen.getByText('Coberto por 3 de 4 concorrentes')).toBeInTheDocument();
+  });
+});

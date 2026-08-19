@@ -258,6 +258,11 @@
   color: var(--danger);
 }
 
+.contentGapCoverage {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
 .shareBox {
   display: flex;
   align-items: center;

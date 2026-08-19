@@ -173,6 +173,10 @@ Código pronto em `backend/routes/teams.js`, `backend/services/teams.js` — nã
 
 Gestão da equipa (convidar, remover membros, editar white-label, eliminar equipa) é restrita ao dono; todos os membros só podem ver/consultar.
 
+## Análise de gap de conteúdo vs SERP (planos Pro/Agency)
+
+Código pronto em `backend/services/serpAnalysis.js`, `backend/services/contentGap.js`, integrado em `backend/services/auditProcessor.js` — não precisa de nenhuma configuração adicional além das já existentes (`DATAFORSEO_LOGIN`/`PASSWORD`, `ANTHROPIC_API_KEY`); ativa-se automaticamente sempre que a categoria `keywords` está incluída no plano (Pro/Agency). Para cada uma das keywords com maior volume de pesquisa entre as sugeridas para o domínio (no máximo 3, configurável via `CONTENT_GAP_MAX_KEYWORDS`, para controlar custos de SERP e de IA), a auditoria: pesquisa o top 10 real do Google para essa keyword (`serp/google/organic/live/regular` da DataForSEO); analisa o conteúdo de cada um desses concorrentes (reaproveitando `backend/services/contentAnalysis.js`, em paralelo); e pede à IA para identificar subtemas ou entidades que a maioria dos concorrentes cobre mas a página do utilizador não. O resultado fica em `audits.content_gap_result` e aparece no relatório num separador "Cobertura de tema", com os subtemas em falta priorizados por quantos concorrentes os cobrem. Como as restantes categorias, uma falha (numa keyword específica, ou na análise toda) nunca bloqueia o resto da auditoria — fica `null`/entradas em falta no relatório.
+
 ## Deploy
 
 ### Backend + worker (Render)

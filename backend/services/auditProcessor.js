@@ -10,6 +10,8 @@ const siteCrawl = require('./siteCrawl');
 const linkGraph = require('./linkGraph');
 const coreWebVitals = require('./coreWebVitals');
 const crawlability = require('./crawlability');
+const serpAnalysis = require('./serpAnalysis');
+const contentGap = require('./contentGap');
 const claude = require('./claude');
 const email = require('./email');
 const googleSearchConsole = require('./googleSearchConsole');
@@ -25,6 +27,13 @@ const MAX_CRAWL_PAGES = 200;
 const POLL_INITIAL_INTERVAL_MS = Number(process.env.SITE_CRAWL_POLL_INITIAL_MS) || 5000;
 const POLL_MAX_INTERVAL_MS = Number(process.env.SITE_CRAWL_POLL_MAX_MS) || 30000;
 const POLL_TIMEOUT_MS = Number(process.env.SITE_CRAWL_POLL_TIMEOUT_MS) || 5 * 60 * 1000;
+
+// Content-gap-vs-SERP analysis (Pro/Agency, "keywords" category): capped so
+// one audit doesn't fire a paid SERP call plus a Claude call for every
+// keyword idea returned — only the highest-volume target keywords get a gap
+// analysis. Overridable so tests can exercise more than one keyword without
+// a large fixture.
+const CONTENT_GAP_MAX_KEYWORDS = Number(process.env.CONTENT_GAP_MAX_KEYWORDS) || 3;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -152,6 +161,38 @@ async function runSiteWideCrawl(auditId, domain) {
   }
 }
 
+// Fetches the real top-10 Google results for one target keyword, reuses
+// contentAnalysis.analyzeContent (run in parallel, one failed competitor page
+// never blocks the others) to extract each competitor's title/headings/word
+// count, then asks Claude to name the subtopics most of them cover that the
+// user's page doesn't. Returns null when there's nothing usable to compare
+// against, so callers can filter it out rather than storing an empty entry.
+async function analyzeContentGapForKeyword(keyword, userContent, language) {
+  const topResults = await serpAnalysis.getTopResults(keyword);
+
+  const competitorContents = (
+    await Promise.all(
+      topResults.map((result) =>
+        contentAnalysis
+          .analyzeContent(result.url)
+          .then((c) => ({ url: result.url, title: c.title, h1s: c.h1s, wordCount: c.wordCount }))
+          .catch(() => null)
+      )
+    )
+  ).filter(Boolean);
+
+  if (competitorContents.length === 0) return null;
+
+  const missingSubtopics = await contentGap.compareContent({
+    keyword,
+    userContent: { title: userContent.title, h1s: userContent.h1s, wordCount: userContent.wordCount },
+    competitorContents,
+    language,
+  });
+
+  return { keyword, competitorCount: competitorContents.length, missingSubtopics };
+}
+
 async function processAuditJob(job) {
   const {
     auditId,
@@ -245,6 +286,32 @@ async function processAuditJob(job) {
       ? await dataforseo.getKeywordIdeas(content.title).catch(() => null)
       : null;
 
+  // Content gap vs SERP (Pro/Agency, "keywords" category only — it fires a
+  // paid SERP call plus a Claude call per target keyword). Target keywords
+  // are the highest-volume ideas already fetched above for this page, so
+  // there's no separate "target keyword" input to collect from the user.
+  // Each keyword is analyzed independently and a failure on one never blocks
+  // the others or the rest of the audit.
+  let contentGapResult = null;
+  if (categories.includes('keywords') && content && keywords?.length) {
+    const targetKeywords = [...keywords]
+      .filter((k) => k.keyword)
+      .sort((a, b) => (b.search_volume ?? 0) - (a.search_volume ?? 0))
+      .slice(0, CONTENT_GAP_MAX_KEYWORDS)
+      .map((k) => k.keyword);
+
+    contentGapResult = (
+      await Promise.all(
+        targetKeywords.map((kw) =>
+          analyzeContentGapForKeyword(kw, content, language).catch((err) => {
+            console.error('Content gap analysis failed for audit', auditId, 'keyword', kw, ':', err.response?.data || err.message);
+            return null;
+          })
+        )
+      )
+    ).filter(Boolean);
+  }
+
   const aiRecommendations = await claude
     .generateRecommendations({
       domain,
@@ -274,8 +341,8 @@ async function processAuditJob(job) {
   await pool.query(
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
      keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
-     core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, completed_at = now()
-     WHERE id = $11`,
+     core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, content_gap_result = $11, completed_at = now()
+     WHERE id = $12`,
     [
       technical,
       content,
@@ -287,6 +354,7 @@ async function processAuditJob(job) {
       JSON.stringify(coreWebVitalsResult),
       JSON.stringify(crawlabilityResult?.robotsTxt ?? null),
       JSON.stringify(crawlabilityResult?.sitemap ? sitemapForStorage : null),
+      JSON.stringify(contentGapResult),
       auditId,
     ]
   );
