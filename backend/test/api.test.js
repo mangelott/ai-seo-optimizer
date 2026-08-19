@@ -446,6 +446,48 @@ test('recurring audits: enabling, updating, and disabling persist correctly and 
   assert.equal(disabled.data.recurring_interval_days, 7, 'disabling should not wipe the previously chosen interval');
 });
 
+test('competitor domains: validates input, persists the list, and is owner-scoped', async () => {
+  const token = await registerAndLogin(uniqueEmail('competitor-domains'));
+  await json('POST', '/api/audit', { token, body: { domain: 'https://competitor-tracking-site.com' } });
+  const [domain] = (await json('GET', '/api/domains', { token })).data;
+  assert.deepEqual(domain.competitor_domains, []);
+
+  const notAnArray = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { competitorDomains: 'https://not-an-array.com' },
+  });
+  assert.equal(notAnArray.status, 400);
+
+  const blankEntry = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { competitorDomains: ['https://ok.com', '   '] },
+  });
+  assert.equal(blankEntry.status, 400);
+
+  const tooMany = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { competitorDomains: Array.from({ length: 6 }, (_, i) => `https://competitor-${i}.com`) },
+  });
+  assert.equal(tooMany.status, 400);
+
+  const otherToken = await registerAndLogin(uniqueEmail('competitor-domains-intruder'));
+  const stolen = await json('PATCH', `/api/domains/${domain.id}`, {
+    token: otherToken,
+    body: { competitorDomains: ['https://stolen.com'] },
+  });
+  assert.equal(stolen.status, 404);
+
+  const saved = await json('PATCH', `/api/domains/${domain.id}`, {
+    token,
+    body: { competitorDomains: ['https://competitor-a.com', 'https://competitor-b.com'] },
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.data.competitor_domains, ['https://competitor-a.com', 'https://competitor-b.com']);
+
+  const persisted = await json('GET', '/api/domains', { token });
+  assert.deepEqual(persisted.data[0].competitor_domains, ['https://competitor-a.com', 'https://competitor-b.com']);
+});
+
 test('google search console: status reflects connection, and disconnect clears it', async () => {
   const email = uniqueEmail('gsc-status');
   const token = await registerAndLogin(email);

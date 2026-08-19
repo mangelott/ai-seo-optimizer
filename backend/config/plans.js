@@ -7,6 +7,7 @@ const PLANS = {
     categories: ['technical', 'content'],
     siteWideCrawl: false,
     aeoQueriesPerMonth: 0,
+    backlinkGapAnalysis: false,
   },
   starter: {
     name: 'Starter',
@@ -16,6 +17,7 @@ const PLANS = {
     categories: ['technical', 'content'],
     siteWideCrawl: false,
     aeoQueriesPerMonth: 0,
+    backlinkGapAnalysis: false,
   },
   pro: {
     name: 'Pro',
@@ -28,6 +30,11 @@ const PLANS = {
     // caps real per-query cost — unlike `categories`, which only gates DataForSEO
     // calls already covered by the subscription price.
     aeoQueriesPerMonth: 20,
+    // Domain Intersection is the most expensive DataForSEO backlinks call
+    // (one lookup per competitor domain), so it's gated separately from the
+    // `backlinks` category (which only covers the flat-rate summary call) and
+    // kept Agency-only for now.
+    backlinkGapAnalysis: false,
   },
   agency: {
     name: 'Agency',
@@ -37,6 +44,7 @@ const PLANS = {
     categories: ['technical', 'content', 'keywords', 'backlinks'],
     siteWideCrawl: true,
     aeoQueriesPerMonth: 100,
+    backlinkGapAnalysis: true,
   },
 };
 

@@ -216,13 +216,14 @@ async function processAuditJob(job) {
   );
   const previousScore = previousResult.rows[0]?.score ?? null;
 
-  const gscLinkResult = await pool.query(
-    `SELECT md.gsc_site_url, u.gsc_refresh_token
+  const domainSettingsResult = await pool.query(
+    `SELECT md.gsc_site_url, md.competitor_domains, u.gsc_refresh_token
      FROM monitored_domains md JOIN users u ON u.id = md.user_id
      WHERE md.user_id = $1 AND md.domain = $2`,
     [userId, domain]
   );
-  const gscLink = gscLinkResult.rows[0];
+  const gscLink = domainSettingsResult.rows[0];
+  const competitorDomains = domainSettingsResult.rows[0]?.competitor_domains ?? [];
 
   const tasks = {
     technical: categories.includes('technical')
@@ -235,6 +236,12 @@ async function processAuditJob(job) {
       : Promise.resolve(null),
     backlinks: categories.includes('backlinks')
       ? dataforseo.getBacklinkSummary(domain).catch(() => null)
+      : Promise.resolve(null),
+    // Backlink gap vs competitors (Agency only, see config/plans.js
+    // backlinkGapAnalysis) — only fires when the user has actually set
+    // competitor domains for this domain in Settings.
+    backlinkGap: categories.includes('backlinks') && plan.backlinkGapAnalysis && competitorDomains.length
+      ? dataforseo.getBacklinkGap(domain, competitorDomains).catch(() => null)
       : Promise.resolve(null),
     coreWebVitals: categories.includes('technical')
       ? coreWebVitals.getCoreWebVitals(domain).catch(() => null)
@@ -254,10 +261,11 @@ async function processAuditJob(job) {
         : Promise.resolve(null),
   };
 
-  const [technical, content, backlinks, coreWebVitalsResult, crawlabilityResult, gscResult] = await Promise.all([
+  const [technical, content, backlinks, backlinkGap, coreWebVitalsResult, crawlabilityResult, gscResult] = await Promise.all([
     tasks.technical,
     tasks.content,
     tasks.backlinks,
+    tasks.backlinkGap,
     tasks.coreWebVitals,
     tasks.crawlability,
     tasks.gsc,
@@ -354,8 +362,9 @@ async function processAuditJob(job) {
   await pool.query(
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
      keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
-     core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, content_gap_result = $11, completed_at = now()
-     WHERE id = $12`,
+     core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, content_gap_result = $11,
+     backlink_gap_result = $12, completed_at = now()
+     WHERE id = $13`,
     [
       technical,
       content,
@@ -368,6 +377,7 @@ async function processAuditJob(job) {
       JSON.stringify(crawlabilityResult?.robotsTxt ?? null),
       JSON.stringify(crawlabilityResult?.sitemap ? sitemapForStorage : null),
       JSON.stringify(contentGapResult),
+      JSON.stringify(backlinkGap),
       auditId,
     ]
   );

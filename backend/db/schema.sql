@@ -57,6 +57,7 @@ ALTER TABLE audits ADD COLUMN IF NOT EXISTS core_web_vitals JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS robots_txt_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS sitemap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS content_gap_result JSONB;
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS backlink_gap_result JSONB;
 CREATE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token);
 
 -- Site-wide crawl (Pro/Agency): one row per page found by the DataForSEO
@@ -186,6 +187,7 @@ CREATE TABLE IF NOT EXISTS monitored_domains (
   gsc_site_url TEXT,
   github_repo TEXT,
   github_branch TEXT,
+  competitor_domains TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (user_id, domain)
 );
@@ -201,6 +203,10 @@ ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS wp_app_password_encrypted
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS gsc_site_url TEXT;
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS github_repo TEXT;
 ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS github_branch TEXT;
+-- Competitor domains for the backlink-gap check (Agency only — see
+-- config/plans.js backlinkGapAnalysis — it's the most expensive backlinks
+-- API call, so it's opt-in per domain rather than run on every audit).
+ALTER TABLE monitored_domains ADD COLUMN IF NOT EXISTS competitor_domains TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS teams (
   id SERIAL PRIMARY KEY,

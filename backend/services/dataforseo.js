@@ -32,4 +32,24 @@ async function getBacklinkSummary(domain) {
   return data.tasks?.[0]?.result?.[0] ?? null;
 }
 
-module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary, client };
+// Backlink gap vs competitors: domains that link to at least one competitor
+// but not to targetDomain. Uses DataForSEO's Domain Intersection endpoint,
+// which takes targets as an object keyed "1", "2", ... — targetDomain is
+// always key "1" — and returns one item per referring domain, with
+// intersection_result[i] set to that domain's backlink data for targets[i+1]
+// (null when that referring domain has no backlink to that target).
+async function getBacklinkGap(targetDomain, competitorDomains) {
+  const targets = { 1: targetDomain };
+  competitorDomains.forEach((domain, i) => {
+    targets[i + 2] = domain;
+  });
+
+  const { data } = await client.post('/backlinks/domain_intersection/live', [{ targets }]);
+  const items = data.tasks?.[0]?.result?.[0]?.items ?? [];
+
+  return items
+    .filter((item) => item.intersection_result?.[0] == null && item.intersection_result?.some((r, i) => i > 0 && r != null))
+    .map((item) => item.domain);
+}
+
+module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary, getBacklinkGap, client };

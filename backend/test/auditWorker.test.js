@@ -50,6 +50,7 @@ function stubDefaults(t) {
   t.mock.method(dataforseo, 'getOnPageAudit', async () => ({ statusCode: 200 }));
   t.mock.method(dataforseo, 'getBacklinkSummary', async () => ({ totalBacklinks: 0 }));
   t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
+  t.mock.method(dataforseo, 'getBacklinkGap', async () => ([]));
   t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => ({
     lcp: { value: 1800, rating: 'good' },
     inp: { value: 150, rating: 'good' },
@@ -328,6 +329,106 @@ test('processAuditJob: only calls the services for categories included in the pl
   assert.equal(backlinksMock.mock.callCount(), 0, 'backlinks is not in the plan\'s categories');
   assert.equal(keywordsMock.mock.callCount(), 0, 'keywords is not in the plan\'s categories');
   assert.equal(cwvMock.mock.callCount(), 0, 'core web vitals is fetched alongside technical, so it is skipped too');
+});
+
+test('processAuditJob: Agency plan with competitor domains configured runs the backlink gap check and persists a fixed set of gap domains', async (t) => {
+  stubDefaults(t);
+  const gapMock = t.mock.method(dataforseo, 'getBacklinkGap', async (domain, competitors) => {
+    assert.equal(domain, 'https://worker-backlinkgap-site.com');
+    assert.deepEqual(competitors, ['https://competitor-a.com', 'https://competitor-b.com']);
+    return ['gap-domain-one.com', 'gap-domain-two.com'];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-backlinkgap'));
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, competitor_domains) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-backlinkgap-site.com', ['https://competitor-a.com', 'https://competitor-b.com']]
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-backlinkgap-site.com');
+
+  await processAuditJob({
+    data: {
+      auditId,
+      domain: 'https://worker-backlinkgap-site.com',
+      categories: ['content', 'backlinks'],
+      planKey: 'agency',
+    },
+  });
+
+  assert.equal(gapMock.mock.callCount(), 1);
+  const row = await pool.query('SELECT backlink_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].backlink_gap_result, ['gap-domain-one.com', 'gap-domain-two.com']);
+});
+
+test('processAuditJob: backlink gap check is skipped on non-Agency plans even with competitor domains set (plan gating)', async (t) => {
+  stubDefaults(t);
+  const gapMock = t.mock.method(dataforseo, 'getBacklinkGap', async () => (['should-not-appear.com']));
+
+  const userId = await createUser(uniqueEmail('worker-backlinkgap-pro'));
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, competitor_domains) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-backlinkgap-pro-site.com', ['https://competitor-a.com']]
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-backlinkgap-pro-site.com');
+
+  await processAuditJob({
+    data: {
+      auditId,
+      domain: 'https://worker-backlinkgap-pro-site.com',
+      categories: ['content', 'backlinks'],
+      planKey: 'pro',
+    },
+  });
+
+  assert.equal(gapMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT backlink_gap_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].backlink_gap_result, null);
+});
+
+test('processAuditJob: backlink gap check is skipped when the domain has no competitor domains configured', async (t) => {
+  stubDefaults(t);
+  const gapMock = t.mock.method(dataforseo, 'getBacklinkGap', async () => (['should-not-appear.com']));
+
+  const userId = await createUser(uniqueEmail('worker-backlinkgap-nocompetitors'));
+  await pool.query('INSERT INTO monitored_domains (user_id, domain) VALUES ($1, $2)', [
+    userId,
+    'https://worker-backlinkgap-nocomp-site.com',
+  ]);
+  const auditId = await createAuditRow(userId, 'https://worker-backlinkgap-nocomp-site.com');
+
+  await processAuditJob({
+    data: {
+      auditId,
+      domain: 'https://worker-backlinkgap-nocomp-site.com',
+      categories: ['content', 'backlinks'],
+      planKey: 'agency',
+    },
+  });
+
+  assert.equal(gapMock.mock.callCount(), 0);
+});
+
+test('processAuditJob: backlink gap check is skipped when "backlinks" is not an included category', async (t) => {
+  stubDefaults(t);
+  const gapMock = t.mock.method(dataforseo, 'getBacklinkGap', async () => (['should-not-appear.com']));
+
+  const userId = await createUser(uniqueEmail('worker-backlinkgap-nocat'));
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, competitor_domains) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-backlinkgap-nocat-site.com', ['https://competitor-a.com']]
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-backlinkgap-nocat-site.com');
+
+  await processAuditJob({
+    data: {
+      auditId,
+      domain: 'https://worker-backlinkgap-nocat-site.com',
+      categories: ['content'],
+      planKey: 'agency',
+    },
+  });
+
+  assert.equal(gapMock.mock.callCount(), 0);
 });
 
 test('processAuditJob: fetches Core Web Vitals alongside the technical category and persists them classified', async (t) => {

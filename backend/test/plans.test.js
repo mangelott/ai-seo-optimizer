@@ -52,3 +52,10 @@ test('only Pro and Agency include AEO tracking', () => {
   assert.ok(PLANS.pro.aeoQueriesPerMonth > 0);
   assert.ok(PLANS.agency.aeoQueriesPerMonth > PLANS.pro.aeoQueriesPerMonth);
 });
+
+test('backlink gap analysis is Agency only — it is the most expensive backlinks API call', () => {
+  assert.equal(PLANS.free.backlinkGapAnalysis, false);
+  assert.equal(PLANS.starter.backlinkGapAnalysis, false);
+  assert.equal(PLANS.pro.backlinkGapAnalysis, false);
+  assert.equal(PLANS.agency.backlinkGapAnalysis, true);
+});
