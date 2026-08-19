@@ -45,6 +45,26 @@ async function sendScoreDropAlertEmail(to, { domain, previousScore, score, repor
   });
 }
 
+const PROVIDER_LABELS = { chatgpt: 'ChatGPT', perplexity: 'Perplexity' };
+
+async function sendCompetitorCitationAlertEmail(to, { domain, query, competitors, reportUrl }) {
+  const list = competitors
+    .map((c) => `<li><strong>${domainLabel(c.competitorDomain)}</strong> (${PROVIDER_LABELS[c.provider] || c.provider})</li>`)
+    .join('');
+
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM,
+    to,
+    subject: `⚠️ A competitor is now cited for "${query}" — ${domainLabel(domain)} isn't`,
+    html: `
+      <p>For the tracked query <strong>"${query}"</strong> on <strong>${domainLabel(domain)}</strong>,
+      the following competitor(s) are now cited by an AI assistant where you aren't:</p>
+      <ul>${list}</ul>
+      <p><a href="${reportUrl}">See your AI visibility report</a></p>
+    `,
+  });
+}
+
 async function sendTeamInviteEmail(to, { teamName, inviterEmail, appUrl }) {
   await resend.emails.send({
     from: process.env.EMAIL_FROM,
@@ -57,4 +77,10 @@ async function sendTeamInviteEmail(to, { teamName, inviterEmail, appUrl }) {
   });
 }
 
-module.exports = { sendPasswordResetEmail, sendAuditReadyEmail, sendScoreDropAlertEmail, sendTeamInviteEmail };
+module.exports = {
+  sendPasswordResetEmail,
+  sendAuditReadyEmail,
+  sendScoreDropAlertEmail,
+  sendCompetitorCitationAlertEmail,
+  sendTeamInviteEmail,
+};

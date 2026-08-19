@@ -8,6 +8,14 @@ const router = express.Router();
 // Independent of aeoQueriesPerMonth (which caps how many checks run) — this
 // bounds list size itself, since queries only get added/removed by hand.
 const MAX_TARGET_QUERIES_PER_DOMAIN = 10;
+// Checking competitor citations reuses the same provider response as the
+// user's own check (services/aeoTracking.js), so this cap is only about
+// keeping the alert list readable, not API cost.
+const MAX_COMPETITOR_DOMAINS_PER_QUERY = 5;
+
+function validCompetitorDomains(competitorDomains) {
+  return Array.isArray(competitorDomains) && competitorDomains.every((d) => typeof d === 'string' && d.trim());
+}
 
 // Same team-shares-owner's-plan rule as middleware/planLimit.js's
 // checkPlanLimit, duplicated in miniature here since AEO gating only needs
@@ -31,7 +39,7 @@ router.get('/queries', requireAuth, async (req, res) => {
   if (!domain) return res.status(400).json({ error: 'domain is required' });
 
   const result = await pool.query(
-    `SELECT id, query, created_at, last_checked_at FROM aeo_target_queries
+    `SELECT id, query, created_at, last_checked_at, competitor_domains FROM aeo_target_queries
      WHERE user_id = $1 AND domain = $2 ORDER BY created_at ASC`,
     [req.user.id, domain]
   );
@@ -39,8 +47,17 @@ router.get('/queries', requireAuth, async (req, res) => {
 });
 
 router.post('/queries', requireAuth, async (req, res) => {
-  const { domain, query } = req.body;
+  const { domain, query, competitorDomains } = req.body;
   if (!domain || !query) return res.status(400).json({ error: 'domain and query are required' });
+
+  if (competitorDomains !== undefined) {
+    if (!validCompetitorDomains(competitorDomains)) {
+      return res.status(400).json({ error: 'competitorDomains must be an array of non-empty strings' });
+    }
+    if (competitorDomains.length > MAX_COMPETITOR_DOMAINS_PER_QUERY) {
+      return res.status(400).json({ error: `You can track up to ${MAX_COMPETITOR_DOMAINS_PER_QUERY} competitor domains per query.` });
+    }
+  }
 
   const plan = await getEffectivePlan(req.user.id);
   if (!plan.aeoQueriesPerMonth) {
@@ -57,15 +74,33 @@ router.post('/queries', requireAuth, async (req, res) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO aeo_target_queries (user_id, domain, query) VALUES ($1, $2, $3)
-       RETURNING id, query, created_at, last_checked_at`,
-      [req.user.id, domain, query]
+      `INSERT INTO aeo_target_queries (user_id, domain, query, competitor_domains) VALUES ($1, $2, $3, $4)
+       RETURNING id, query, created_at, last_checked_at, competitor_domains`,
+      [req.user.id, domain, query, competitorDomains ?? []]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'This query is already tracked for this domain.' });
     throw err;
   }
+});
+
+router.patch('/queries/:id/competitors', requireAuth, async (req, res) => {
+  const { competitorDomains } = req.body;
+  if (!validCompetitorDomains(competitorDomains)) {
+    return res.status(400).json({ error: 'competitorDomains must be an array of non-empty strings' });
+  }
+  if (competitorDomains.length > MAX_COMPETITOR_DOMAINS_PER_QUERY) {
+    return res.status(400).json({ error: `You can track up to ${MAX_COMPETITOR_DOMAINS_PER_QUERY} competitor domains per query.` });
+  }
+
+  const result = await pool.query(
+    `UPDATE aeo_target_queries SET competitor_domains = $1 WHERE id = $2 AND user_id = $3
+     RETURNING id, query, created_at, last_checked_at, competitor_domains`,
+    [competitorDomains, req.params.id, req.user.id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: 'Query not found' });
+  res.json(result.rows[0]);
 });
 
 router.delete('/queries/:id', requireAuth, async (req, res) => {

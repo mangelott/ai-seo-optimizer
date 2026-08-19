@@ -45,7 +45,9 @@ async function setPlan(email, plan) {
 }
 
 test.before(async () => {
-  await pool.query('TRUNCATE aeo_queries, aeo_target_queries, quick_scans, subscriptions, audits, monitored_domains, users RESTART IDENTITY CASCADE');
+  await pool.query(
+    'TRUNCATE aeo_competitor_citations, aeo_queries, aeo_target_queries, quick_scans, subscriptions, audits, monitored_domains, users RESTART IDENTITY CASCADE'
+  );
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -119,6 +121,87 @@ test('POST /api/aeo/queries: enforces the per-domain query cap', async () => {
   });
   assert.equal(status, 400);
   assert.match(data.error, /up to 10 queries/);
+});
+
+test('POST /api/aeo/queries: accepts competitorDomains and returns them', async () => {
+  const email = uniqueEmail('aeo-competitors');
+  const token = await registerAndLogin(email);
+  await setPlan(email, 'pro');
+
+  const { status, data } = await jsonReq('POST', '/api/aeo/queries', {
+    token,
+    body: { domain: 'https://example.com', query: 'best coffee lisbon', competitorDomains: ['https://rival.com'] },
+  });
+  assert.equal(status, 201);
+  assert.deepEqual(data.competitor_domains, ['https://rival.com']);
+});
+
+test('POST /api/aeo/queries: rejects a competitorDomains list past the per-query cap', async () => {
+  const email = uniqueEmail('aeo-competitor-cap');
+  const token = await registerAndLogin(email);
+  await setPlan(email, 'pro');
+
+  const { status, data } = await jsonReq('POST', '/api/aeo/queries', {
+    token,
+    body: {
+      domain: 'https://example.com',
+      query: 'best coffee lisbon',
+      competitorDomains: ['a.com', 'b.com', 'c.com', 'd.com', 'e.com', 'f.com'],
+    },
+  });
+  assert.equal(status, 400);
+  assert.match(data.error, /up to 5 competitor domains/);
+});
+
+test('POST /api/aeo/queries: rejects a non-array/non-string competitorDomains value', async () => {
+  const email = uniqueEmail('aeo-competitor-invalid');
+  const token = await registerAndLogin(email);
+  await setPlan(email, 'pro');
+
+  const { status, data } = await jsonReq('POST', '/api/aeo/queries', {
+    token,
+    body: { domain: 'https://example.com', query: 'best coffee lisbon', competitorDomains: ['ok.com', ''] },
+  });
+  assert.equal(status, 400);
+  assert.match(data.error, /array of non-empty strings/);
+});
+
+test('PATCH /api/aeo/queries/:id/competitors: updates the competitor list for a query owned by the requester', async () => {
+  const email = uniqueEmail('aeo-patch-competitors');
+  const token = await registerAndLogin(email);
+  await setPlan(email, 'pro');
+
+  const created = await jsonReq('POST', '/api/aeo/queries', {
+    token,
+    body: { domain: 'https://patch-site.com', query: 'best coffee lisbon' },
+  });
+
+  const { status, data } = await jsonReq('PATCH', `/api/aeo/queries/${created.data.id}/competitors`, {
+    token,
+    body: { competitorDomains: ['https://rival.com', 'https://other-rival.com'] },
+  });
+  assert.equal(status, 200);
+  assert.deepEqual(data.competitor_domains, ['https://rival.com', 'https://other-rival.com']);
+});
+
+test('PATCH /api/aeo/queries/:id/competitors: 404s for a query owned by another user', async () => {
+  const emailA = uniqueEmail('aeo-patch-a');
+  const tokenA = await registerAndLogin(emailA);
+  await setPlan(emailA, 'pro');
+  const created = await jsonReq('POST', '/api/aeo/queries', {
+    token: tokenA,
+    body: { domain: 'https://patch-owner-site.com', query: 'best coffee lisbon' },
+  });
+
+  const emailB = uniqueEmail('aeo-patch-b');
+  const tokenB = await registerAndLogin(emailB);
+  await setPlan(emailB, 'pro');
+
+  const { status } = await jsonReq('PATCH', `/api/aeo/queries/${created.data.id}/competitors`, {
+    token: tokenB,
+    body: { competitorDomains: ['https://rival.com'] },
+  });
+  assert.equal(status, 404);
 });
 
 test('GET /api/aeo/queries: lists only the requesting user\'s queries for that domain', async () => {

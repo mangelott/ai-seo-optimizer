@@ -111,6 +111,9 @@ CREATE TABLE IF NOT EXISTS aeo_target_queries (
   UNIQUE (user_id, domain, query)
 );
 CREATE INDEX IF NOT EXISTS idx_aeo_target_queries_user_domain ON aeo_target_queries(user_id, domain);
+-- Competitor domains the user wants compared against their own citation
+-- checks for this query — see aeo_competitor_citations below.
+ALTER TABLE aeo_target_queries ADD COLUMN IF NOT EXISTS competitor_domains TEXT[] NOT NULL DEFAULT '{}';
 
 -- One row per provider per check (a single target query check produces up to
 -- one row per provider in jobs/aeoTracking.js's PROVIDERS list).
@@ -126,6 +129,25 @@ CREATE TABLE IF NOT EXISTS aeo_queries (
 );
 CREATE INDEX IF NOT EXISTS idx_aeo_queries_user_domain ON aeo_queries(user_id, domain);
 CREATE INDEX IF NOT EXISTS idx_aeo_queries_checked_at ON aeo_queries(checked_at);
+
+-- One row per (competitor domain, provider) per check, recorded alongside the
+-- user's own result in aeo_queries above for the same query/provider/
+-- checked_at. jobs/aeoTracking.js compares each row here against the
+-- previous one for the same (user, domain, query, competitor_domain,
+-- provider) to detect the transition into "competitor cited, user isn't" —
+-- an already-cited competitor doesn't re-alert on every weekly check.
+CREATE TABLE IF NOT EXISTS aeo_competitor_citations (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  query TEXT NOT NULL,
+  competitor_domain TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  cited BOOLEAN NOT NULL,
+  checked_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_aeo_competitor_citations_lookup
+  ON aeo_competitor_citations(user_id, domain, query, competitor_domain, provider, checked_at DESC);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,

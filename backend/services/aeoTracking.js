@@ -69,15 +69,24 @@ const PROVIDERS = {
   perplexity: queryPerplexity,
 };
 
-async function checkQuery(query, domain, provider) {
+// competitorDomains is checked against the same response text/API call as
+// the user's own domain — no extra provider call per competitor, so tracking
+// competitors doesn't add to the paid-API cost of a check.
+async function checkQuery(query, domain, provider, competitorDomains = []) {
   const queryFn = PROVIDERS[provider];
   if (!queryFn) throw new Error(`Unknown AEO provider: ${provider}`);
 
   const responseText = await queryFn(query);
+  const competitorCitations = {};
+  for (const competitorDomain of competitorDomains) {
+    competitorCitations[competitorDomain] = detectCitation(responseText, competitorDomain);
+  }
+
   return {
     provider,
     cited: detectCitation(responseText, domain),
     responseSnippet: snippet(responseText),
+    competitorCitations,
   };
 }
 

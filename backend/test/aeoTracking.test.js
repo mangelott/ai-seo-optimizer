@@ -95,6 +95,19 @@ test('checkQuery: throws on an unknown provider', async () => {
   await assert.rejects(aeoTracking.checkQuery('q', 'https://example.com', 'bing-chat'), /Unknown AEO provider/);
 });
 
+test('checkQuery: reports competitor citations from the same response, without an extra API call', async () => {
+  openAiReply = 'Try competitor.com for this — example.com does not cover it.';
+  const result = await aeoTracking.checkQuery('best coffee lisbon', 'https://example.com', 'chatgpt', [
+    'https://competitor.com',
+    'https://other.com',
+  ]);
+  assert.equal(result.cited, true);
+  assert.deepEqual(result.competitorCitations, {
+    'https://competitor.com': true,
+    'https://other.com': false,
+  });
+});
+
 test('checkQuery: truncates long responses in the stored snippet', async () => {
   openAiReply = 'x'.repeat(600);
   const result = await aeoTracking.checkQuery('q', 'https://example.com', 'chatgpt');
