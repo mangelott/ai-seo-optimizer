@@ -69,6 +69,19 @@ test('system prompt caps readability fixes at medium severity and requires they 
   assert.match(prompt, /never "high"/);
 });
 
+test('system prompt defines a distinct "aeo" category, separate from technical/content', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"technical", "content", "keywords", "backlinks", "aeo"/);
+  assert.match(prompt, /own "aeo" category/);
+});
+
+test('system prompt uses questionHeadings/firstParagraphs/structuredData to judge AEO readiness', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"questionHeadings"/);
+  assert.match(prompt, /"firstParagraphs"/);
+  assert.match(prompt, /FAQPage.*HowTo|HowTo.*FAQPage/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);

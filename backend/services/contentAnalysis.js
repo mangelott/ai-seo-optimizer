@@ -90,6 +90,27 @@ function extractStructuredData($) {
     .get();
 }
 
+// AEO (Answer Engine Optimization) signals: whether the page already has
+// explicit question/answer structure an LLM can lift verbatim, and whether
+// its opening paragraphs read as a direct answer rather than burying it
+// further down. Heuristics only, same spirit as the rest of this file —
+// the actual judgment call ("is this a good direct answer?") is left to
+// Claude, which receives these alongside structuredData (services/claude.js).
+function extractQuestionHeadings($) {
+  return $('h2, h3, h4')
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .filter((text) => text.endsWith('?'));
+}
+
+function extractFirstParagraphs($, count = 3) {
+  return $('p')
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .filter(Boolean)
+    .slice(0, count);
+}
+
 async function analyzeContent(url, language = 'en') {
   const { data: html } = await axios.get(url, { timeout: 10000 });
   const $ = cheerio.load(html);
@@ -105,6 +126,8 @@ async function analyzeContent(url, language = 'en') {
     .get()
     .filter(Boolean);
   const structuredData = extractStructuredData($);
+  const questionHeadings = extractQuestionHeadings($);
+  const firstParagraphs = extractFirstParagraphs($);
 
   // Script/style content isn't prose, so it's excluded here even though the
   // existing wordCount above (kept as-is, for compatibility) doesn't bother.
@@ -123,9 +146,11 @@ async function analyzeContent(url, language = 'en') {
     imagesMissingAlt: imagesMissingAltSrcs.length,
     imagesMissingAltSrcs,
     structuredData,
+    questionHeadings,
+    firstParagraphs,
     readabilityScore: readability?.score ?? null,
     readabilityLabel: readability?.label ?? null,
   };
 }
 
-module.exports = { analyzeContent, extractStructuredData, validateNode };
+module.exports = { analyzeContent, extractStructuredData, validateNode, extractQuestionHeadings, extractFirstParagraphs };

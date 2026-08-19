@@ -10,7 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const cheerio = require('cheerio');
-const { analyzeContent, extractStructuredData } = require('../services/contentAnalysis');
+const { analyzeContent, extractStructuredData, extractQuestionHeadings, extractFirstParagraphs } = require('../services/contentAnalysis');
 
 function loadStructuredData(html) {
   const $ = cheerio.load(html);
@@ -111,6 +111,30 @@ test('extractStructuredData: an @graph of multiple nodes rolls up into one entry
   ]);
 });
 
+test('extractQuestionHeadings: picks up h2/h3/h4 headings phrased as a question', () => {
+  const html = `<html><body><h2>What is this product?</h2><h3>Not a question</h3><h4>How does it work?</h4></body></html>`;
+  const $ = cheerio.load(html);
+  assert.deepEqual(extractQuestionHeadings($), ['What is this product?', 'How does it work?']);
+});
+
+test('extractQuestionHeadings: returns an empty array when no heading is phrased as a question', () => {
+  const html = `<html><body><h2>Product Overview</h2><h3>Features</h3></body></html>`;
+  const $ = cheerio.load(html);
+  assert.deepEqual(extractQuestionHeadings($), []);
+});
+
+test('extractFirstParagraphs: returns the first 3 non-empty paragraphs, trimmed', () => {
+  const html = `<html><body>
+    <p>  First paragraph.  </p>
+    <p></p>
+    <p>Second paragraph.</p>
+    <p>Third paragraph.</p>
+    <p>Fourth paragraph (should be excluded).</p>
+  </body></html>`;
+  const $ = cheerio.load(html);
+  assert.deepEqual(extractFirstParagraphs($), ['First paragraph.', 'Second paragraph.', 'Third paragraph.']);
+});
+
 let fakeServer;
 let baseUrl;
 
@@ -138,6 +162,21 @@ function buildFakeServer() {
 
   api.get('/no-jsonld', (req, res) => {
     res.send(`<html><head><title>No schema page</title></head><body><h1>Hello</h1></body></html>`);
+  });
+
+  // A long-form article with no explicit Q&A structure: no heading phrased
+  // as a question, no FAQPage/HowTo schema, and the direct answer to the
+  // page's topic buried past the first 3 paragraphs — exactly the signals
+  // services/claude.js uses to decide whether to propose an "aeo" fix.
+  api.get('/no-qa-structure', (req, res) => {
+    res.send(`<html><head><title>Complete Guide to Widgets</title></head><body>
+      <h1>Complete Guide to Widgets</h1>
+      <p>Widgets have a long and interesting history dating back many decades of industrial design.</p>
+      <p>This section covers the manufacturing process in detail, including sourcing of raw materials.</p>
+      <p>Distribution networks for widgets vary significantly across different global markets.</p>
+      <h2>Manufacturing Process</h2>
+      <p>The direct answer to how widgets actually work is buried here, far from the top of the article.</p>
+      </body></html>`);
   });
 
   api.get('/easy-en', (req, res) => {
@@ -184,6 +223,21 @@ test('analyzeContent: invalid JSON-LD comes through as an error entry', async ()
 test('analyzeContent: page with no JSON-LD returns an empty structuredData array', async () => {
   const result = await analyzeContent(`${baseUrl}/no-jsonld`);
   assert.deepEqual(result.structuredData, []);
+});
+
+test('analyzeContent: page without Q&A structure reports no question headings, no FAQPage/HowTo schema, and no early direct answer', async () => {
+  const result = await analyzeContent(`${baseUrl}/no-qa-structure`);
+  assert.deepEqual(result.questionHeadings, []);
+  assert.deepEqual(result.structuredData, []);
+  assert.deepEqual(result.firstParagraphs, [
+    'Widgets have a long and interesting history dating back many decades of industrial design.',
+    'This section covers the manufacturing process in detail, including sourcing of raw materials.',
+    'Distribution networks for widgets vary significantly across different global markets.',
+  ]);
+  assert.ok(
+    !result.firstParagraphs.join(' ').includes('direct answer'),
+    'the direct answer should be buried past the first 3 paragraphs, not present in them'
+  );
 });
 
 test('analyzeContent: wires readabilityScore/readabilityLabel for English content, ignoring script text', async () => {
