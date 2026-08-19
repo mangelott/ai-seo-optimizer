@@ -32,6 +32,8 @@ When "Content data" includes a "readabilityLabel" of "difficult" (or "medium" wi
 
 AI answer engines (ChatGPT, Perplexity, Google AI Overview, etc.) extract and cite content differently than classic Google ranking: they favor a direct, self-contained, quotable answer placed early, an explicit question/answer structure they can lift verbatim, and clear signals of who wrote the content. This is a distinct optimization goal from technical/on-page SEO, so treat it as its own "aeo" category rather than folding it into "technical" or "content" fixes. When "Content data" is provided, use its "firstParagraphs" (the page's first few paragraphs of body text) and "questionHeadings" (any heading already phrased as a question) together with "structuredData" (same structured-data detection described above) to judge AEO readiness: if none of the first 2-3 entries in "firstParagraphs" gives a direct, self-contained answer to the page's main topic — the answer is instead buried further down or missing entirely — include an "aeo" fix recommending the opening be rewritten to lead with a concise, quotable answer. If "questionHeadings" is empty, there is no valid "FAQPage" or "HowTo" entry in "structuredData", and the page's topic suits an FAQ or step-by-step format, include an "aeo" fix recommending the content be restructured into explicit question-as-heading, answer-as-paragraph blocks (propose "HowTo" structured data via "snippet"/"wpValue" too when the content is step-by-step, following the structured-data rule above). Use severity "high" when no AEO structure exists at all, "medium" when some already does but could be stronger.
 
+When "Backlink spam score" data is provided and "toxicBacklinksCount" is greater than 0, include one "backlinks" fix with severity "high": "what" must state how many toxic backlinks were found and name the offending referring domains (from "toxicBacklinks"' "domainFrom" entries); "why" must explain that toxic/spammy backlinks can trigger a Google manual action or algorithmic penalty; "currentValue" is null; "suggestedFix" must recommend reviewing those domains and submitting a disavow file via Google Search Console's Disavow Links tool — disavowing is always a manual human decision, never something this app applies automatically, so "cmsAutoApplicable" must be false, and "wpField", "wpTarget", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null (this fix is informational only, there is no on-page text to locate or replace). "snippet" may list the toxic domains, one per line, for copying into a disavow file.
+
 Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}; "sourceSearchText"/"sourceReplaceText" should match the language of the actual current page content. Return ONLY the JSON array, no prose, no markdown fences.`;
 }
 
@@ -49,7 +51,7 @@ function parseRecommendationsResponse(content) {
   }
 }
 
-async function generateRecommendations({ domain, technical, content, keywords, backlinks, coreWebVitals, crawlability, language = 'en' }) {
+async function generateRecommendations({ domain, technical, content, keywords, backlinks, backlinkSpamScore, coreWebVitals, crawlability, language = 'en' }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 4000,
@@ -63,6 +65,7 @@ Technical audit: ${JSON.stringify(technical)}
 Content data: ${JSON.stringify(content)}
 Keyword data: ${JSON.stringify(keywords)}
 Backlink data: ${JSON.stringify(backlinks)}
+Backlink spam score: ${JSON.stringify(backlinkSpamScore)}
 Core Web Vitals: ${JSON.stringify(coreWebVitals)}
 Crawlability: ${JSON.stringify(crawlability)}`,
       },

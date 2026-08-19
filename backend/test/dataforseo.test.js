@@ -43,6 +43,28 @@ function buildFakeDataForSeoServer() {
     });
   });
 
+  api.post('/backlinks/backlinks/live', (req, res) => {
+    const { target } = req.body[0];
+    assert.equal(target, 'https://my-site.com');
+
+    res.json({
+      tasks: [
+        {
+          result: [
+            {
+              items: [
+                { domain_from: 'spammy-link-farm.com', url_from: 'https://spammy-link-farm.com/page', backlink_spam_score: 85 },
+                { domain_from: 'another-toxic-site.com', url_from: 'https://another-toxic-site.com/x', backlink_spam_score: 61 },
+                { domain_from: 'reputable-blog.com', url_from: 'https://reputable-blog.com/post', backlink_spam_score: 20 },
+                { domain_from: 'right-at-threshold.com', url_from: 'https://right-at-threshold.com/', backlink_spam_score: 60 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   return api;
 }
 
@@ -62,4 +84,17 @@ test.after(async () => {
 test('getBacklinkGap: returns domains that link to a competitor but not the target', async () => {
   const gap = await dataforseo.getBacklinkGap('https://my-site.com', ['https://competitor-one.com', 'https://competitor-two.com']);
   assert.deepEqual(gap.sort(), ['linked-to-competitor-only.com', 'linked-to-second-competitor-only.com'].sort());
+});
+
+test('getBacklinkSpamScore: only aggregates backlinks with a spam score above the risk threshold', async () => {
+  const result = await dataforseo.getBacklinkSpamScore('https://my-site.com');
+
+  assert.equal(result.totalBacklinksChecked, 4);
+  assert.equal(result.toxicBacklinksCount, 2);
+  assert.deepEqual(
+    result.toxicBacklinks.map((b) => b.domainFrom).sort(),
+    ['another-toxic-site.com', 'spammy-link-farm.com'].sort()
+  );
+  // a score exactly at the threshold is not toxic, and a clean backlink never shows up
+  assert.ok(!result.toxicBacklinks.some((b) => ['right-at-threshold.com', 'reputable-blog.com'].includes(b.domainFrom)));
 });

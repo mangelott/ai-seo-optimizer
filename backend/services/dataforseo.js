@@ -32,6 +32,30 @@ async function getBacklinkSummary(domain) {
   return data.tasks?.[0]?.result?.[0] ?? null;
 }
 
+// DataForSEO scores each backlink 0-100 for spamminess (their own bucketing:
+// 0-30 low, 31-60 medium, 61-100 high) — anything above this threshold is
+// treated as toxic and surfaced for the user to review/disavow.
+const TOXIC_BACKLINK_SPAM_SCORE_THRESHOLD = 60;
+
+async function getBacklinkSpamScore(domain) {
+  const { data } = await client.post('/backlinks/backlinks/live', [{ target: domain, limit: 1000 }]);
+  const items = data.tasks?.[0]?.result?.[0]?.items ?? [];
+
+  const toxicBacklinks = items
+    .filter((item) => (item.backlink_spam_score ?? 0) > TOXIC_BACKLINK_SPAM_SCORE_THRESHOLD)
+    .map((item) => ({
+      domainFrom: item.domain_from,
+      urlFrom: item.url_from,
+      spamScore: item.backlink_spam_score,
+    }));
+
+  return {
+    totalBacklinksChecked: items.length,
+    toxicBacklinksCount: toxicBacklinks.length,
+    toxicBacklinks,
+  };
+}
+
 // Backlink gap vs competitors: domains that link to at least one competitor
 // but not to targetDomain. Uses DataForSEO's Domain Intersection endpoint,
 // which takes targets as an object keyed "1", "2", ... — targetDomain is
@@ -52,4 +76,4 @@ async function getBacklinkGap(targetDomain, competitorDomains) {
     .map((item) => item.domain);
 }
 
-module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary, getBacklinkGap, client };
+module.exports = { getOnPageAudit, getKeywordIdeas, getBacklinkSummary, getBacklinkGap, getBacklinkSpamScore, client };

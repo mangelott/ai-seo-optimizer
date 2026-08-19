@@ -82,6 +82,15 @@ test('system prompt uses questionHeadings/firstParagraphs/structuredData to judg
   assert.match(prompt, /FAQPage.*HowTo|HowTo.*FAQPage/);
 });
 
+test('system prompt describes a high-severity, informational-only fix for toxic backlinks', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /toxicBacklinksCount/);
+  assert.match(prompt, /severity "high"/);
+  assert.match(prompt, /disavow/i);
+  assert.match(prompt, /"cmsAutoApplicable" must be false/);
+  assert.match(prompt, /"wpField", "wpTarget", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);
