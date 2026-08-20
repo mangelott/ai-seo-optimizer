@@ -91,6 +91,22 @@ test('system prompt describes a high-severity, informational-only fix for toxic 
   assert.match(prompt, /"wpField", "wpTarget", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null/);
 });
 
+test('system prompt suggests reformatting toward an unoccupied featured snippet, using firstParagraphs/h1s to judge readiness', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"SERP feature opportunities"/);
+  assert.match(prompt, /"serpFeatures\.featuredSnippet\.present" is true/);
+  assert.match(prompt, /"serpFeatures\.featuredSnippet\.occupiedByUser" is false/);
+  assert.match(prompt, /"firstParagraphs"/);
+  assert.match(prompt, /"h1s"/);
+});
+
+test('system prompt suggests targeting People Also Ask questions as subheadings, at low severity', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"serpFeatures\.peopleAlsoAsk\.present" is true/);
+  assert.match(prompt, /severity "low"/);
+  assert.match(prompt, /H2\/H3 subheadings/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);

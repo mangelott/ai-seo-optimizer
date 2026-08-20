@@ -22,6 +22,12 @@ const claude = require('../services/claude');
 const email = require('../services/email');
 const googleSearchConsole = require('../services/googleSearchConsole');
 
+const NO_SERP_FEATURES = {
+  featuredSnippet: { present: false, url: null, occupiedByUser: false },
+  peopleAlsoAsk: { present: false, questions: [] },
+  otherFeatures: [],
+};
+
 function uniqueEmail(label) {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
 }
@@ -62,7 +68,7 @@ function stubDefaults(t) {
     sitemap: { exists: true, wellFormed: true, rootElement: 'urlset', urlCount: 1, brokenSampleUrls: [] },
   }));
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
-  t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+  t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({ organicResults: [], serpFeatures: NO_SERP_FEATURES }));
   t.mock.method(contentGap, 'compareContent', async () => ([]));
   t.mock.method(claude, 'generateRecommendations', async () => ([]));
   t.mock.method(email, 'sendAuditReadyEmail', async () => {});
@@ -533,9 +539,10 @@ test('processAuditJob: content gap analysis caps at the top 3 highest-volume key
     { keyword: 'kw-high', search_volume: 900 },
     { keyword: 'kw-novolume', search_volume: 100 },
   ]));
-  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async (keyword) => [
-    { url: `https://competitor-for-${keyword}.example.com`, title: 'A', snippet: null, rank: 1 },
-  ]);
+  const serpMock = t.mock.method(serpAnalysis, 'analyzeSerp', async (keyword) => ({
+    organicResults: [{ url: `https://competitor-for-${keyword}.example.com`, title: 'A', snippet: null, rank: 1 }],
+    serpFeatures: NO_SERP_FEATURES,
+  }));
   const compareMock = t.mock.method(contentGap, 'compareContent', async ({ keyword, userContent, competitorContents }) => {
     assert.equal(userContent.title, 'Coffee shop guide');
     assert.equal(competitorContents.length, 1);
@@ -570,14 +577,47 @@ test('processAuditJob: content gap analysis caps at the top 3 highest-volume key
       missingSubtopics: [
         { topic: 'Topic for kw-high', competitorsCovering: 1, competitorUrls: ['https://competitor-for-kw-high.example.com'] },
       ],
+      serpFeatures: NO_SERP_FEATURES,
     }
   );
+});
+
+test('processAuditJob: passes per-keyword SERP feature opportunities from the content gap flow through to Claude', async (t) => {
+  stubDefaults(t);
+  t.mock.method(contentAnalysis, 'analyzeContent', async (url) => {
+    if (url === 'https://worker-serpfeat-site.com') return { title: 'Coffee shop guide', h1s: [], wordCount: 400 };
+    return { title: `Competitor for ${url}`, h1s: [], wordCount: 900 };
+  });
+  t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([{ keyword: 'best coffee', search_volume: 500 }]));
+  const occupiedByUser = {
+    featuredSnippet: { present: true, url: 'https://worker-serpfeat-site.com/guide', occupiedByUser: false },
+    peopleAlsoAsk: { present: true, questions: ['What is the best coffee shop?'] },
+    otherFeatures: [],
+  };
+  t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({
+    organicResults: [{ url: 'https://competitor.example.com', title: 'A', snippet: null, rank: 1 }],
+    serpFeatures: occupiedByUser,
+  }));
+  t.mock.method(contentGap, 'compareContent', async () => ([]));
+  const claudeMock = t.mock.method(claude, 'generateRecommendations', async (args) => {
+    assert.deepEqual(args.serpOpportunities, [{ keyword: 'best coffee', serpFeatures: occupiedByUser }]);
+    return [];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-serpfeat'));
+  const auditId = await createAuditRow(userId, 'https://worker-serpfeat-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-serpfeat-site.com', categories: ['content', 'keywords'], planKey: 'agency' },
+  });
+
+  assert.equal(claudeMock.mock.callCount(), 1);
 });
 
 test('processAuditJob: skips content gap analysis entirely when "keywords" is not an included category', async (t) => {
   stubDefaults(t);
   t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([{ keyword: 'coffee', search_volume: 100 }]));
-  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+  const serpMock = t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({ organicResults: [], serpFeatures: NO_SERP_FEATURES }));
 
   const userId = await createUser(uniqueEmail('worker-gap-nogate'));
   const auditId = await createAuditRow(userId, 'https://worker-gap-nogate-site.com');
@@ -594,7 +634,7 @@ test('processAuditJob: skips content gap analysis entirely when "keywords" is no
 test('processAuditJob: content gap analysis is skipped when there are no keyword ideas to target', async (t) => {
   stubDefaults(t);
   t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
-  const serpMock = t.mock.method(serpAnalysis, 'getTopResults', async () => ([]));
+  const serpMock = t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({ organicResults: [], serpFeatures: NO_SERP_FEATURES }));
 
   const userId = await createUser(uniqueEmail('worker-gap-noideas'));
   const auditId = await createAuditRow(userId, 'https://worker-gap-noideas-site.com');
@@ -614,9 +654,12 @@ test('processAuditJob: a content gap failure for one keyword does not block the 
     { keyword: 'good keyword', search_volume: 100 },
     { keyword: 'bad keyword', search_volume: 900 },
   ]));
-  t.mock.method(serpAnalysis, 'getTopResults', async (keyword) => {
+  t.mock.method(serpAnalysis, 'analyzeSerp', async (keyword) => {
     if (keyword === 'bad keyword') throw new Error('DataForSEO SERP timeout');
-    return [{ url: 'https://ok-competitor.example.com', title: 'ok', snippet: null, rank: 1 }];
+    return {
+      organicResults: [{ url: 'https://ok-competitor.example.com', title: 'ok', snippet: null, rank: 1 }],
+      serpFeatures: NO_SERP_FEATURES,
+    };
   });
   t.mock.method(contentGap, 'compareContent', async () => ([{ topic: 'Topic X', competitorsCovering: 1, competitorUrls: [] }]));
 
@@ -636,16 +679,22 @@ test('processAuditJob: a content gap failure for one keyword does not block the 
   const row = await pool.query('SELECT status, content_gap_result FROM audits WHERE id = $1', [auditId]);
   assert.equal(row.rows[0].status, 'completed');
   assert.deepEqual(row.rows[0].content_gap_result, [
-    { keyword: 'good keyword', competitorCount: 1, missingSubtopics: [{ topic: 'Topic X', competitorsCovering: 1, competitorUrls: [] }] },
+    {
+      keyword: 'good keyword',
+      competitorCount: 1,
+      missingSubtopics: [{ topic: 'Topic X', competitorsCovering: 1, competitorUrls: [] }],
+      serpFeatures: NO_SERP_FEATURES,
+    },
   ]);
 });
 
 test('processAuditJob: a keyword with no competitor pages that could be analyzed is dropped from the results', async (t) => {
   stubDefaults(t);
   t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([{ keyword: 'unreachable competitors', search_volume: 100 }]));
-  t.mock.method(serpAnalysis, 'getTopResults', async () => ([
-    { url: 'https://down.example.com', title: null, snippet: null, rank: 1 },
-  ]));
+  t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({
+    organicResults: [{ url: 'https://down.example.com', title: null, snippet: null, rank: 1 }],
+    serpFeatures: NO_SERP_FEATURES,
+  }));
   t.mock.method(contentAnalysis, 'analyzeContent', async (url) => {
     if (url === 'https://down.example.com') throw new Error('ECONNREFUSED');
     return { title: 'Some Title', h1s: [], wordCount: 100 };

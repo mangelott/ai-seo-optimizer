@@ -162,14 +162,18 @@ async function runSiteWideCrawl(auditId, domain) {
   }
 }
 
-// Fetches the real top-10 Google results for one target keyword, reuses
-// contentAnalysis.analyzeContent (run in parallel, one failed competitor page
-// never blocks the others) to extract each competitor's title/headings/word
-// count, then asks Claude to name the subtopics most of them cover that the
-// user's page doesn't. Returns null when there's nothing usable to compare
-// against, so callers can filter it out rather than storing an empty entry.
-async function analyzeContentGapForKeyword(keyword, userContent, language) {
-  const topResults = await serpAnalysis.getTopResults(keyword);
+// Fetches the real top-10 Google results for one target keyword plus that
+// same SERP's rich-result opportunities (featured snippet, People Also Ask —
+// see services/serpAnalysis.js's analyzeSerp) in a single DataForSEO call,
+// reuses contentAnalysis.analyzeContent (run in parallel, one failed
+// competitor page never blocks the others) to extract each competitor's
+// title/headings/word count, then asks Claude to name the subtopics most of
+// them cover that the user's page doesn't. Returns null when there's nothing
+// usable to compare against, so callers can filter it out rather than
+// storing an empty entry — serpFeatures is fetched regardless of that, since
+// it doesn't depend on competitor content being reachable.
+async function analyzeContentGapForKeyword(keyword, domain, userContent, language) {
+  const { organicResults: topResults, serpFeatures } = await serpAnalysis.analyzeSerp(keyword, domain);
 
   const competitorContents = (
     await Promise.all(
@@ -191,7 +195,7 @@ async function analyzeContentGapForKeyword(keyword, userContent, language) {
     language,
   });
 
-  return { keyword, competitorCount: competitorContents.length, missingSubtopics };
+  return { keyword, competitorCount: competitorContents.length, missingSubtopics, serpFeatures };
 }
 
 async function processAuditJob(job) {
@@ -324,7 +328,7 @@ async function processAuditJob(job) {
     contentGapResult = (
       await Promise.all(
         targetKeywords.map((kw) =>
-          analyzeContentGapForKeyword(kw, content, language).catch((err) => {
+          analyzeContentGapForKeyword(kw, domain, content, language).catch((err) => {
             console.error('Content gap analysis failed for audit', auditId, 'keyword', kw, ':', err.response?.data || err.message);
             return null;
           })
@@ -332,6 +336,14 @@ async function processAuditJob(job) {
       )
     ).filter(Boolean);
   }
+
+  // Same per-keyword serpFeatures gathered above (one DataForSEO SERP call,
+  // no extra fetch here) is handed to Claude so it can suggest reformatting
+  // toward an unoccupied featured snippet / People Also Ask, alongside the
+  // rest of the audit's fixes.
+  const serpOpportunities = contentGapResult?.length
+    ? contentGapResult.map(({ keyword, serpFeatures }) => ({ keyword, serpFeatures }))
+    : null;
 
   const aiRecommendations = await claude
     .generateRecommendations({
@@ -342,6 +354,7 @@ async function processAuditJob(job) {
       backlinks,
       coreWebVitals: coreWebVitalsResult,
       crawlability: crawlabilityResult,
+      serpOpportunities,
       language,
     })
     .catch(() => []);

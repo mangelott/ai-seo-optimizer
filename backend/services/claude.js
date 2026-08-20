@@ -32,6 +32,8 @@ When "Content data" includes a "readabilityLabel" of "difficult" (or "medium" wi
 
 AI answer engines (ChatGPT, Perplexity, Google AI Overview, etc.) extract and cite content differently than classic Google ranking: they favor a direct, self-contained, quotable answer placed early, an explicit question/answer structure they can lift verbatim, and clear signals of who wrote the content. This is a distinct optimization goal from technical/on-page SEO, so treat it as its own "aeo" category rather than folding it into "technical" or "content" fixes. When "Content data" is provided, use its "firstParagraphs" (the page's first few paragraphs of body text) and "questionHeadings" (any heading already phrased as a question) together with "structuredData" (same structured-data detection described above) to judge AEO readiness: if none of the first 2-3 entries in "firstParagraphs" gives a direct, self-contained answer to the page's main topic — the answer is instead buried further down or missing entirely — include an "aeo" fix recommending the opening be rewritten to lead with a concise, quotable answer. If "questionHeadings" is empty, there is no valid "FAQPage" or "HowTo" entry in "structuredData", and the page's topic suits an FAQ or step-by-step format, include an "aeo" fix recommending the content be restructured into explicit question-as-heading, answer-as-paragraph blocks (propose "HowTo" structured data via "snippet"/"wpValue" too when the content is step-by-step, following the structured-data rule above). Use severity "high" when no AEO structure exists at all, "medium" when some already does but could be stronger.
 
+When "SERP feature opportunities" data is provided (one entry per target keyword, each with a "keyword" and a "serpFeatures" object): if "serpFeatures.featuredSnippet.present" is true and "serpFeatures.featuredSnippet.occupiedByUser" is false, look at "Content data"'s "firstParagraphs" and "h1s" for a paragraph or section already close to a concise, self-contained answer or a clear list for that keyword's topic. If one exists, include a "content" fix with severity "medium" whose "suggestedFix" names the specific existing paragraph/heading and the specific reformatting to apply (e.g. tighten it into a 40-60 word direct-answer paragraph placed right under the relevant heading, or convert an already-listed set of items into a proper ordered/unordered list) to increase the chance of winning that keyword's featured snippet. Do not propose this fix when the page's opening content is unrelated to the keyword's topic or too thin to reformat — that calls for expanding the content itself, not a reformatting fix. If "serpFeatures.peopleAlsoAsk.present" is true and its "questions" array is non-empty, include a separate "content" fix with severity "low" listing those exact questions and recommending they be added as H2/H3 subheadings with a direct answer paragraph beneath each, to target People Also Ask.
+
 When "Backlink spam score" data is provided and "toxicBacklinksCount" is greater than 0, include one "backlinks" fix with severity "high": "what" must state how many toxic backlinks were found and name the offending referring domains (from "toxicBacklinks"' "domainFrom" entries); "why" must explain that toxic/spammy backlinks can trigger a Google manual action or algorithmic penalty; "currentValue" is null; "suggestedFix" must recommend reviewing those domains and submitting a disavow file via Google Search Console's Disavow Links tool — disavowing is always a manual human decision, never something this app applies automatically, so "cmsAutoApplicable" must be false, and "wpField", "wpTarget", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null (this fix is informational only, there is no on-page text to locate or replace). "snippet" may list the toxic domains, one per line, for copying into a disavow file.
 
 Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}; "sourceSearchText"/"sourceReplaceText" should match the language of the actual current page content. Return ONLY the JSON array, no prose, no markdown fences.`;
@@ -51,7 +53,7 @@ function parseRecommendationsResponse(content) {
   }
 }
 
-async function generateRecommendations({ domain, technical, content, keywords, backlinks, backlinkSpamScore, coreWebVitals, crawlability, language = 'en' }) {
+async function generateRecommendations({ domain, technical, content, keywords, backlinks, backlinkSpamScore, coreWebVitals, crawlability, serpOpportunities, language = 'en' }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 4000,
@@ -67,7 +69,8 @@ Keyword data: ${JSON.stringify(keywords)}
 Backlink data: ${JSON.stringify(backlinks)}
 Backlink spam score: ${JSON.stringify(backlinkSpamScore)}
 Core Web Vitals: ${JSON.stringify(coreWebVitals)}
-Crawlability: ${JSON.stringify(crawlability)}`,
+Crawlability: ${JSON.stringify(crawlability)}
+SERP feature opportunities: ${JSON.stringify(serpOpportunities)}`,
       },
     ],
   });

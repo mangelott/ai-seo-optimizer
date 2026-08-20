@@ -2,7 +2,9 @@
 // server (in the pattern of test/coreWebVitals.test.js), so the real
 // request-building/response-parsing code runs, not a stub. Fixture data
 // mixes an organic result in with non-organic SERP item types (people_also_ask,
-// featured_snippet) to confirm getTopResults filters those out.
+// featured_snippet) to confirm getTopResults filters those out, and separate
+// fixtures with/without a featured snippet to confirm extractSerpFeatures'/
+// analyzeSerp's detection.
 require('dotenv').config();
 
 const test = require('node:test');
@@ -23,6 +25,49 @@ function buildFakeServer() {
 
     if (keyword === 'no-results-keyword') {
       return res.json({ tasks: [{ result: [{ items: [] }] }] });
+    }
+
+    if (keyword === 'featured-snippet-keyword') {
+      return res.json({
+        tasks: [
+          {
+            result: [
+              {
+                items: [
+                  { type: 'featured_snippet', rank_absolute: 1, url: 'https://competitor.example.com/answer', title: 'Answer' },
+                  {
+                    type: 'people_also_ask',
+                    rank_absolute: 2,
+                    items: [
+                      { type: 'people_also_ask_element', title: 'What is a featured snippet?' },
+                      { type: 'people_also_ask_element', title: 'How do you win one?' },
+                    ],
+                  },
+                  { type: 'local_pack', rank_absolute: 3 },
+                  { type: 'organic', rank_absolute: 4, url: 'https://a.example.com', title: 'A', description: 'Snippet A' },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (keyword === 'user-occupies-snippet-keyword') {
+      return res.json({
+        tasks: [
+          {
+            result: [
+              {
+                items: [
+                  { type: 'featured_snippet', rank_absolute: 1, url: 'https://www.my-site.com/guide#answer' },
+                  { type: 'organic', rank_absolute: 2, url: 'https://my-site.com/guide', title: 'Guide', description: null },
+                ],
+              },
+            ],
+          },
+        ],
+      });
     }
 
     const items = [
@@ -79,4 +124,61 @@ test('getTopResults: sends the keyword and location/language codes in the reques
   assert.equal(lastRequestBody.keyword, 'coffee shops lisbon');
   assert.equal(lastRequestBody.location_code, 2620);
   assert.equal(lastRequestBody.language_code, 'pt');
+});
+
+test('analyzeSerp: detects a featured snippet not occupied by the user, People Also Ask questions, and other rich results', async () => {
+  const { organicResults, serpFeatures } = await serpAnalysis.analyzeSerp('featured-snippet-keyword', 'my-site.com');
+
+  assert.equal(organicResults.length, 1);
+  assert.equal(organicResults[0].url, 'https://a.example.com');
+
+  assert.deepEqual(serpFeatures.featuredSnippet, {
+    present: true,
+    url: 'https://competitor.example.com/answer',
+    occupiedByUser: false,
+  });
+  assert.deepEqual(serpFeatures.peopleAlsoAsk, {
+    present: true,
+    questions: ['What is a featured snippet?', 'How do you win one?'],
+  });
+  assert.deepEqual(serpFeatures.otherFeatures, ['local_pack']);
+});
+
+test('analyzeSerp: marks the featured snippet as occupied when its URL belongs to the given domain (www/subpath-insensitive)', async () => {
+  const { serpFeatures } = await serpAnalysis.analyzeSerp('user-occupies-snippet-keyword', 'my-site.com');
+  assert.equal(serpFeatures.featuredSnippet.present, true);
+  assert.equal(serpFeatures.featuredSnippet.occupiedByUser, true);
+});
+
+test('analyzeSerp: reports no featured snippet / no People Also Ask when the SERP has neither', async () => {
+  const { serpFeatures } = await serpAnalysis.analyzeSerp('no-results-keyword', 'my-site.com');
+  assert.deepEqual(serpFeatures, {
+    featuredSnippet: { present: false, url: null, occupiedByUser: false },
+    peopleAlsoAsk: { present: false, questions: [] },
+    otherFeatures: [],
+  });
+});
+
+test('analyzeSerp: never reports occupiedByUser true when no domain is given', async () => {
+  const { serpFeatures } = await serpAnalysis.analyzeSerp('featured-snippet-keyword');
+  assert.equal(serpFeatures.featuredSnippet.present, true);
+  assert.equal(serpFeatures.featuredSnippet.occupiedByUser, false);
+});
+
+test('analyzeSerp: sends the keyword and location/language codes in the request body, same as getTopResults', async () => {
+  await serpAnalysis.analyzeSerp('coffee shops lisbon', 'my-site.com', 2620, 'pt');
+  assert.equal(lastRequestBody.keyword, 'coffee shops lisbon');
+  assert.equal(lastRequestBody.location_code, 2620);
+  assert.equal(lastRequestBody.language_code, 'pt');
+});
+
+test('extractSerpFeatures: pure function works directly off a raw items array (no SERP call)', () => {
+  const items = [
+    { type: 'featured_snippet', url: 'https://my-site.com/page' },
+    { type: 'people_also_ask', items: [{ type: 'people_also_ask_element', title: 'A question?' }] },
+    { type: 'organic', url: 'https://a.example.com' },
+  ];
+  const features = serpAnalysis.extractSerpFeatures(items, 'https://my-site.com');
+  assert.equal(features.featuredSnippet.occupiedByUser, true);
+  assert.deepEqual(features.peopleAlsoAsk.questions, ['A question?']);
 });
