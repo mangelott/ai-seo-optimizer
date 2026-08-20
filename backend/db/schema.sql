@@ -319,3 +319,26 @@ BEGIN
     ALTER TABLE users ADD CONSTRAINT users_team_id_fkey FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- Server log analysis (Agency plan only, see routes/logAnalysis.js /
+-- services/logAnalysis.js): one row per uploaded access-log file, storing
+-- the bot hits parsed from it plus the comparison against crawled_pages of
+-- the most recent completed audit for that domain at upload time (whichever
+-- audit that was — audit_id is snapshotted here rather than recomputed later,
+-- since a newer audit's crawl could otherwise silently change what an old
+-- upload's comparison_result was actually computed against). audit_id is
+-- nullable: a domain can have log uploads before it has ever completed an
+-- audit, in which case comparison_result stays NULL (bot_hits alone is still
+-- useful) rather than blocking the upload.
+CREATE TABLE IF NOT EXISTS server_log_uploads (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  audit_id INTEGER REFERENCES audits(id) ON DELETE SET NULL,
+  bot_hits JSONB,
+  comparison_result JSONB,
+  lines_parsed INTEGER NOT NULL DEFAULT 0,
+  lines_skipped INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_server_log_uploads_user_domain ON server_log_uploads(user_id, domain);

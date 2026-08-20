@@ -17,6 +17,7 @@ const aeoRoutes = require('./routes/aeo');
 const trackedKeywordsRoutes = require('./routes/trackedKeywords');
 const apiKeysRoutes = require('./routes/apiKeys');
 const apiDocsRoutes = require('./routes/apiDocs');
+const logAnalysisRoutes = require('./routes/logAnalysis');
 
 const app = express();
 
@@ -44,5 +45,6 @@ app.use('/api/aeo', aeoRoutes);
 app.use('/api/rank-tracking', trackedKeywordsRoutes);
 app.use('/api/keys', apiKeysRoutes);
 app.use('/api/docs', apiDocsRoutes);
+app.use('/api/log-analysis', logAnalysisRoutes);
 
 module.exports = app;

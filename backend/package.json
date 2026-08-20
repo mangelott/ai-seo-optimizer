@@ -8,8 +8,8 @@
     "dev": "node --watch server.js",
     "migrate": "node db/migrate.js",
     "test": "node --test --test-concurrency=1",
-    "test:unit": "node --test test/scoring.test.js test/claude.test.js test/contentGap.test.js test/plans.test.js test/wordpressPlugin.test.js",
-    "test:integration": "node --test --test-concurrency=1 test/api.test.js test/recurringAudits.test.js test/wordpress.test.js test/teams.test.js test/teamsPortfolio.test.js test/security.test.js test/auditWorker.test.js test/github.test.js test/siteCrawl.test.js test/coreWebVitals.test.js test/serpAnalysis.test.js test/aeoTracking.test.js test/aeoJob.test.js test/aeo.test.js test/apiKeys.test.js",
+    "test:unit": "node --test test/scoring.test.js test/claude.test.js test/contentGap.test.js test/plans.test.js test/wordpressPlugin.test.js test/logAnalysis.test.js",
+    "test:integration": "node --test --test-concurrency=1 test/api.test.js test/recurringAudits.test.js test/wordpress.test.js test/teams.test.js test/teamsPortfolio.test.js test/security.test.js test/auditWorker.test.js test/github.test.js test/siteCrawl.test.js test/coreWebVitals.test.js test/serpAnalysis.test.js test/aeoTracking.test.js test/aeoJob.test.js test/aeo.test.js test/apiKeys.test.js test/logAnalysisRoute.test.js",
     "lint:php": "docker run --rm -v \"$(pwd)/../wordpress-plugin:/app\" php:8.3-cli php -l /app/ai-seo-optimizer-connector.php"
   },
   "keywords": [],
@@ -26,6 +26,7 @@
     "express-rate-limit": "^8.6.1",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
     "node-cron": "^4.6.0",
     "pg": "^8.22.0",
     "resend": "^6.20.0",

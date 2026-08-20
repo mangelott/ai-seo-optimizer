@@ -9,6 +9,7 @@ const PLANS = {
     aeoQueriesPerMonth: 0,
     backlinkGapAnalysis: false,
     rankTrackingChecksPerMonth: 0,
+    serverLogAnalysis: false,
   },
   starter: {
     name: 'Starter',
@@ -20,6 +21,7 @@ const PLANS = {
     aeoQueriesPerMonth: 0,
     backlinkGapAnalysis: false,
     rankTrackingChecksPerMonth: 0,
+    serverLogAnalysis: false,
   },
   pro: {
     name: 'Pro',
@@ -48,6 +50,12 @@ const PLANS = {
     // but only by a small fixed constant for readability (MAX_TRACKED_KEYWORDS_PER_DOMAIN
     // in routes/trackedKeywords.js) — cost is bounded here, not by list size.
     rankTrackingChecksPerMonth: 40,
+    // Server log analysis (routes/logAnalysis.js) has no per-request API cost
+    // (it's parsing a file the user uploads), but only sites with enough
+    // traffic to produce a meaningful access log — and the agencies managing
+    // them — get value from it. Kept Agency-only rather than metered, like
+    // backlinkGapAnalysis above.
+    serverLogAnalysis: false,
   },
   agency: {
     name: 'Agency',
@@ -59,6 +67,7 @@ const PLANS = {
     aeoQueriesPerMonth: 100,
     backlinkGapAnalysis: true,
     rankTrackingChecksPerMonth: 200,
+    serverLogAnalysis: true,
   },
 };
 
