@@ -25,6 +25,18 @@ export default function Settings() {
   const [gscConnected, setGscConnected] = useState(false);
   const [gscSites, setGscSites] = useState([]);
   const [gscNotice, setGscNotice] = useState('');
+  // TODO(reuse): this state block, its effects below, and connectGa4/
+  // disconnectGa4/selectGa4Property are a third near-copy of the GSC (and
+  // GitHub) connect/status/list OAuth-integration pattern in this same file —
+  // worth factoring into a shared hook (e.g. useOAuthIntegration) if a fourth
+  // integration is ever added.
+  // TODO(altitude): ga4PropertyId is account-wide, not per monitored domain
+  // like gscSites/gsc_site_url below — see the TODO on users.ga4_property_id
+  // in backend/db/schema.sql.
+  const [ga4Connected, setGa4Connected] = useState(false);
+  const [ga4PropertyId, setGa4PropertyId] = useState(null);
+  const [ga4Properties, setGa4Properties] = useState([]);
+  const [ga4Notice, setGa4Notice] = useState('');
   const [wpForms, setWpForms] = useState({});
   const [wpErrors, setWpErrors] = useState({});
   const [wpBusy, setWpBusy] = useState({});
@@ -61,6 +73,10 @@ export default function Settings() {
       data.forEach((d) => loadRankKeywords(d.id, d.domain));
     });
     api.get('/gsc/status').then(({ data }) => setGscConnected(data.connected));
+    api.get('/ga4/status').then(({ data }) => {
+      setGa4Connected(data.connected);
+      setGa4PropertyId(data.propertyId);
+    });
     api.get('/github/status').then(({ data }) => setGithubConnected(data.connected));
     loadTeam();
 
@@ -68,11 +84,15 @@ export default function Settings() {
     const gscParam = params.get('gsc');
     if (gscParam === 'connected') setGscNotice('success');
     else if (gscParam === 'error') setGscNotice('error');
+    const ga4Param = params.get('ga4');
+    if (ga4Param === 'connected') setGa4Notice('success');
+    else if (ga4Param === 'error') setGa4Notice('error');
     const githubParam = params.get('github');
     if (githubParam === 'connected') setGithubNotice('success');
     else if (githubParam === 'error') setGithubNotice('error');
-    if (gscParam || githubParam) {
+    if (gscParam || ga4Param || githubParam) {
       params.delete('gsc');
+      params.delete('ga4');
       params.delete('github');
       const newSearch = params.toString();
       window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
@@ -86,6 +106,14 @@ export default function Settings() {
       .then(({ data }) => setGscSites(data))
       .catch(() => setGscSites([]));
   }, [gscConnected]);
+
+  useEffect(() => {
+    if (!ga4Connected) return;
+    api
+      .get('/ga4/properties')
+      .then(({ data }) => setGa4Properties(data))
+      .catch(() => setGa4Properties([]));
+  }, [ga4Connected]);
 
   useEffect(() => {
     if (!githubConnected) return;
@@ -110,6 +138,23 @@ export default function Settings() {
   async function linkGscSite(domainId, siteUrl) {
     const { data } = await api.patch(`/gsc/domains/${domainId}`, { siteUrl: siteUrl || null });
     setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
+  }
+
+  function connectGa4() {
+    const token = localStorage.getItem('token');
+    window.location.href = `${API_BASE_URL}/ga4/connect?token=${encodeURIComponent(token)}`;
+  }
+
+  async function disconnectGa4() {
+    await api.delete('/ga4/disconnect');
+    setGa4Connected(false);
+    setGa4Properties([]);
+    setGa4PropertyId(null);
+  }
+
+  async function selectGa4Property(propertyId) {
+    const { data } = await api.patch('/ga4/property', { propertyId: propertyId || null });
+    setGa4PropertyId(data.ga4_property_id);
   }
 
   function updateWpForm(domainId, field, value) {
@@ -380,6 +425,43 @@ export default function Settings() {
             </Button>
           )}
         </div>
+      </div>
+
+      <div className={styles.card}>
+        <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>{t('settings.ga4')}</h3>
+        <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.ga4Desc')}</p>
+        {ga4Notice === 'success' && <p className={styles.success}>{t('settings.ga4ConnectedNotice')}</p>}
+        {ga4Notice === 'error' && <p className={styles.error}>{t('settings.ga4ErrorNotice')}</p>}
+        <div style={{ marginTop: 16 }}>
+          {ga4Connected ? (
+            <Button variant="secondary" size="sm" type="button" onClick={disconnectGa4}>
+              {t('settings.ga4Disconnect')}
+            </Button>
+          ) : (
+            <Button size="sm" type="button" onClick={connectGa4}>
+              {t('settings.ga4Connect')}
+            </Button>
+          )}
+        </div>
+        {ga4Connected && (
+          <div style={{ marginTop: 16 }}>
+            <Label htmlFor="ga4-property">{t('settings.ga4PropertyLabel')}</Label>
+            <select
+              id="ga4-property"
+              className={styles.select}
+              style={{ width: '100%' }}
+              value={ga4PropertyId || ''}
+              onChange={(e) => selectGa4Property(e.target.value)}
+            >
+              <option value="">{t('settings.ga4NoProperty')}</option>
+              {ga4Properties.map((p) => (
+                <option key={p.propertyId} value={p.propertyId}>
+                  {p.displayName} ({p.accountName})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className={styles.card}>

@@ -72,4 +72,38 @@ async function querySearchAnalytics(accessToken, siteUrl) {
   return { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position };
 }
 
-module.exports = { getAuthUrl, exchangeCodeForTokens, refreshAccessToken, listSites, querySearchAnalytics };
+// Per-page clicks/impressions for the same 28-day window as
+// querySearchAnalytics above, so services/googleAnalytics.js's per-landing-page
+// traffic quality can be crossed with it in auditProcessor.js (today
+// querySearchAnalytics only returns siteUrl-wide totals — volume with no
+// per-page breakdown). Capped to the top N pages by clicks.
+async function queryTopPages(accessToken, siteUrl, limit = 20) {
+  const end = new Date();
+  end.setDate(end.getDate() - 3);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 28);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+
+  const { data } = await axios.post(
+    `${SITES_URL}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+    { startDate: fmt(start), endDate: fmt(end), dimensions: ['page'], rowLimit: limit },
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  return (data.rows || []).map((row) => ({
+    page: row.keys[0],
+    clicks: row.clicks,
+    impressions: row.impressions,
+    ctr: row.ctr,
+    position: row.position,
+  }));
+}
+
+module.exports = {
+  getAuthUrl,
+  exchangeCodeForTokens,
+  refreshAccessToken,
+  listSites,
+  querySearchAnalytics,
+  queryTopPages,
+};

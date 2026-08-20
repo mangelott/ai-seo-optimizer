@@ -6,7 +6,7 @@ const router = express.Router();
 router.get('/:token', async (req, res) => {
   const result = await pool.query(
     `SELECT id, domain, status, technical_result, content_result, keyword_result,
-     backlink_result, ai_recommendations, score, gsc_result, crawl_status, pages_crawled_count,
+     backlink_result, ai_recommendations, score, gsc_result, ga4_result, crawl_status, pages_crawled_count,
      core_web_vitals, robots_txt_result, sitemap_result, created_at, completed_at
      FROM audits WHERE share_token = $1 AND is_shared = true`,
     [req.params.token]

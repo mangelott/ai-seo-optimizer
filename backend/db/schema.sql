@@ -14,6 +14,19 @@ CREATE TABLE IF NOT EXISTS users (
   gsc_access_token TEXT,
   gsc_refresh_token TEXT,
   gsc_connected_at TIMESTAMPTZ,
+  -- TODO(altitude): unlike gsc_site_url (per monitored_domains row below),
+  -- ga4_property_id is account-wide — one GA4 property per user, not one per
+  -- monitored domain. This was the explicitly requested design. A user
+  -- monitoring several domains can only cross-reference one of them against
+  -- GA4 at a time; auditProcessor.js's hostname-aware crossWithGscPages match
+  -- keeps a mismatched domain from silently getting the wrong data (it just
+  -- drops the cross-reference instead), but doesn't remove the one-domain-at-
+  -- a-time limitation itself. Revisit if/when this needs to scale like GSC:
+  -- move ga4_property_id to monitored_domains and add a per-domain picker in
+  -- Settings, mirroring gsc_site_url.
+  ga4_access_token TEXT,
+  ga4_refresh_token TEXT,
+  ga4_property_id TEXT,
   team_id INTEGER,
   github_installation_id TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -27,6 +40,9 @@ ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_access_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_refresh_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gsc_connected_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ga4_access_token TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ga4_refresh_token TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ga4_property_id TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id INTEGER;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_installation_id TEXT;
 
@@ -44,6 +60,7 @@ CREATE TABLE IF NOT EXISTS audits (
   is_shared BOOLEAN NOT NULL DEFAULT false,
   share_token UUID DEFAULT gen_random_uuid(),
   gsc_result JSONB,
+  ga4_result JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   completed_at TIMESTAMPTZ
 );
@@ -59,6 +76,11 @@ ALTER TABLE audits ADD COLUMN IF NOT EXISTS sitemap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS content_gap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS backlink_gap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS trust_signals_result JSONB;
+-- Cross of GSC clicks (volume) with GA4 organic traffic quality (bounce/
+-- engagement rate, conversions) for the same landing pages — see
+-- services/googleAnalytics.js and auditProcessor.js. Requires both GSC and
+-- GA4 connected; a domain with only one of the two never populates this.
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS ga4_result JSONB;
 CREATE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token);
 
 -- Site-wide crawl (Pro/Agency): one row per page found by the DataForSEO

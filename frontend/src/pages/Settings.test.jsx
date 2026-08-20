@@ -29,6 +29,8 @@ function setupApiDefaults({
   gscStatus = { connected: false },
   team = { team: null, members: [] },
   gscSites = [],
+  ga4Status = { connected: false, propertyId: null },
+  ga4Properties = [],
   githubStatus = { connected: false },
   githubRepos = [],
   rankKeywords = {},
@@ -39,6 +41,8 @@ function setupApiDefaults({
     if (path === '/gsc/status') return resolved(gscStatus);
     if (path === '/teams/me') return resolved(team);
     if (path === '/gsc/sites') return resolved(gscSites);
+    if (path === '/ga4/status') return resolved(ga4Status);
+    if (path === '/ga4/properties') return resolved(ga4Properties);
     if (path === '/github/status') return resolved(githubStatus);
     if (path === '/github/repos') return resolved(githubRepos);
     if (path.startsWith('/rank-tracking/keywords')) {
@@ -191,6 +195,74 @@ describe('Settings: Google Search Console', () => {
   });
 });
 
+describe('Settings: Google Analytics', () => {
+  it('shows the connect button when not connected', async () => {
+    setupApiDefaults({ ga4Status: { connected: false, propertyId: null } });
+    renderSettings();
+    expect(await screen.findByText('Connect Google Analytics')).toBeInTheDocument();
+    expect(screen.queryByText('GA4 property')).not.toBeInTheDocument();
+  });
+
+  it('redirects to the backend connect endpoint with the stored token', async () => {
+    setupApiDefaults({ ga4Status: { connected: false, propertyId: null } });
+    renderSettings();
+    await screen.findByText('Connect Google Analytics');
+
+    const originalLocation = window.location;
+    delete window.location;
+    window.location = { href: '' };
+
+    fireEvent.click(screen.getByText('Connect Google Analytics'));
+    expect(window.location.href).toBe('http://localhost:4000/api/ga4/connect?token=fake-token');
+
+    window.location = originalLocation;
+  });
+
+  it('shows the property picker when connected, and lets the user select a property', async () => {
+    setupApiDefaults({
+      ga4Status: { connected: true, propertyId: null },
+      ga4Properties: [{ propertyId: '123', displayName: 'My Site', accountName: 'My Account' }],
+    });
+    api.patch.mockResolvedValue({ data: { ga4_property_id: '123' } });
+    renderSettings();
+
+    await screen.findByText('GA4 property');
+    fireEvent.change(screen.getByDisplayValue('Not linked'), { target: { value: '123' } });
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/ga4/property', { propertyId: '123' });
+    });
+  });
+
+  it('shows Disconnect when connected, and reverts to Connect after disconnecting', async () => {
+    setupApiDefaults({ ga4Status: { connected: true, propertyId: null } });
+    api.delete.mockResolvedValue({ data: { ok: true } });
+    renderSettings();
+
+    await screen.findByText('GA4 property');
+    fireEvent.click(screen.getByText('Disconnect'));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/ga4/disconnect'));
+    expect(await screen.findByText('Connect Google Analytics')).toBeInTheDocument();
+  });
+
+  it('shows a success notice and strips the ?ga4=connected query param after an OAuth redirect', async () => {
+    window.history.pushState({}, '', '/settings?ga4=connected');
+    setupApiDefaults();
+    renderSettings();
+
+    expect(await screen.findByText('Google Analytics connected successfully.')).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('shows an error notice after a failed OAuth redirect', async () => {
+    window.history.pushState({}, '', '/settings?ga4=error');
+    setupApiDefaults();
+    renderSettings();
+    expect(await screen.findByText("Couldn't connect Google Analytics. Please try again.")).toBeInTheDocument();
+  });
+});
+
 describe('Settings: GitHub', () => {
   it('shows the connect button when not connected', async () => {
     setupApiDefaults({ githubStatus: { connected: false } });
@@ -260,6 +332,12 @@ describe('Settings: GitHub', () => {
     renderSettings();
 
     await screen.findByText('example.com');
+    // githubRepos loads in a separate effect keyed off githubConnected (one
+    // more async render cycle after domains resolve), so wait for the actual
+    // option to exist before changing the select — otherwise the change event
+    // can fire while the select still only has the "no repo" option, leaving
+    // its value at '' and the assertion below flaky.
+    await screen.findByRole('option', { name: 'acme/website' });
     fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'acme/website' } });
 
     await waitFor(() => {

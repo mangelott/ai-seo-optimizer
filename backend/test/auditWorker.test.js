@@ -22,6 +22,7 @@ const contentGap = require('../services/contentGap');
 const claude = require('../services/claude');
 const email = require('../services/email');
 const googleSearchConsole = require('../services/googleSearchConsole');
+const googleAnalytics = require('../services/googleAnalytics');
 
 const NO_SERP_FEATURES = {
   featuredSnippet: { present: false, url: null, occupiedByUser: false },
@@ -321,6 +322,137 @@ test('processAuditJob: a GSC fetch failure is swallowed — gsc_result is null a
   const row = await pool.query('SELECT status, gsc_result FROM audits WHERE id = $1', [auditId]);
   assert.equal(row.rows[0].status, 'completed');
   assert.equal(row.rows[0].gsc_result, null);
+});
+
+test('processAuditJob: crosses GSC clicks with GA4 traffic quality by page when both are connected and linked', async (t) => {
+  stubDefaults(t);
+  const gscRefreshMock = t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'a-gsc-access-token');
+  const topPagesMock = t.mock.method(googleSearchConsole, 'queryTopPages', async (accessToken, siteUrl) => {
+    assert.equal(accessToken, 'a-gsc-access-token');
+    assert.equal(siteUrl, 'https://gsc-property.example/');
+    return [
+      { page: 'https://worker-ga4-site.com/converts', clicks: 10, impressions: 100, ctr: 0.1, position: 3 },
+      { page: 'https://worker-ga4-site.com/not-in-ga4', clicks: 4, impressions: 40, ctr: 0.1, position: 6 },
+    ];
+  });
+  const ga4RefreshMock = t.mock.method(googleAnalytics, 'refreshAccessToken', async (token) => {
+    assert.equal(token, 'a-ga4-refresh-token');
+    return 'a-ga4-access-token';
+  });
+  const trafficQualityMock = t.mock.method(googleAnalytics, 'getTrafficQuality', async (accessToken, propertyId) => {
+    assert.equal(accessToken, 'a-ga4-access-token');
+    assert.equal(propertyId, '123456');
+    return [
+      { hostName: 'worker-ga4-site.com', landingPage: '/converts', sessions: 30, engagementRate: 0.8, bounceRate: 0.2, conversions: 6 },
+    ];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-ga4'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1, ga4_refresh_token = $2, ga4_property_id = $3 WHERE id = $4', [
+    'a-refresh-token',
+    'a-ga4-refresh-token',
+    '123456',
+    userId,
+  ]);
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-ga4-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-ga4-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-ga4-site.com' } });
+
+  assert.equal(topPagesMock.mock.callCount(), 1);
+  assert.equal(ga4RefreshMock.mock.callCount(), 1);
+  assert.equal(trafficQualityMock.mock.callCount(), 1);
+  // The gsc and ga4 tasks share one GSC token refresh instead of each
+  // refreshing the same refresh token independently.
+  assert.equal(gscRefreshMock.mock.callCount(), 1);
+
+  const row = await pool.query('SELECT ga4_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].ga4_result, {
+    propertyId: '123456',
+    pages: [
+      {
+        page: 'https://worker-ga4-site.com/converts',
+        clicks: 10,
+        impressions: 100,
+        sessions: 30,
+        engagementRate: 0.8,
+        bounceRate: 0.2,
+        conversions: 6,
+      },
+    ],
+  });
+});
+
+test('processAuditJob: skips GA4 when GSC is connected but GA4 is not', async (t) => {
+  stubDefaults(t);
+  t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'a-gsc-access-token');
+  const trafficQualityMock = t.mock.method(googleAnalytics, 'getTrafficQuality', async () => []);
+
+  const userId = await createUser(uniqueEmail('worker-noga4'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1 WHERE id = $2', ['a-refresh-token', userId]);
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-noga4-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-noga4-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-noga4-site.com' } });
+
+  assert.equal(trafficQualityMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT ga4_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].ga4_result, null);
+});
+
+test('processAuditJob: skips GA4 when the user is connected but the domain has no linked GSC property', async (t) => {
+  stubDefaults(t);
+  const trafficQualityMock = t.mock.method(googleAnalytics, 'getTrafficQuality', async () => []);
+
+  const userId = await createUser(uniqueEmail('worker-ga4nogsc'));
+  await pool.query('UPDATE users SET ga4_refresh_token = $1, ga4_property_id = $2 WHERE id = $3', [
+    'a-ga4-refresh-token',
+    '123456',
+    userId,
+  ]);
+  // Domain exists but has no gsc_site_url linked.
+  await pool.query('INSERT INTO monitored_domains (user_id, domain) VALUES ($1, $2)', [userId, 'https://worker-ga4nogsc-site.com']);
+  const auditId = await createAuditRow(userId, 'https://worker-ga4nogsc-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-ga4nogsc-site.com' } });
+
+  assert.equal(trafficQualityMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT ga4_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].ga4_result, null);
+});
+
+test('processAuditJob: a GA4 fetch failure is swallowed — ga4_result is null and the audit still completes', async (t) => {
+  stubDefaults(t);
+  t.mock.method(googleSearchConsole, 'refreshAccessToken', async () => 'a-gsc-access-token');
+  t.mock.method(googleSearchConsole, 'queryTopPages', async () => []);
+  t.mock.method(googleAnalytics, 'refreshAccessToken', async () => {
+    throw new Error('invalid_grant');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-ga4fail'));
+  await pool.query('UPDATE users SET gsc_refresh_token = $1, ga4_refresh_token = $2, ga4_property_id = $3 WHERE id = $4', [
+    'a-refresh-token',
+    'a-ga4-refresh-token',
+    '123456',
+    userId,
+  ]);
+  await pool.query(
+    'INSERT INTO monitored_domains (user_id, domain, gsc_site_url) VALUES ($1, $2, $3)',
+    [userId, 'https://worker-ga4fail-site.com', 'https://gsc-property.example/']
+  );
+  const auditId = await createAuditRow(userId, 'https://worker-ga4fail-site.com');
+
+  await assert.doesNotReject(processAuditJob({ data: { auditId, domain: 'https://worker-ga4fail-site.com' } }));
+
+  const row = await pool.query('SELECT status, ga4_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].ga4_result, null);
 });
 
 test('processAuditJob: only calls the services for categories included in the plan', async (t) => {

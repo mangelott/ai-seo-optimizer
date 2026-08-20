@@ -17,6 +17,7 @@ const contentGap = require('./contentGap');
 const claude = require('./claude');
 const email = require('./email');
 const googleSearchConsole = require('./googleSearchConsole');
+const googleAnalytics = require('./googleAnalytics');
 const { PLANS } = require('../config/plans');
 
 const SCORE_DROP_ALERT_THRESHOLD = 10;
@@ -222,13 +223,19 @@ async function processAuditJob(job) {
   const previousScore = previousResult.rows[0]?.score ?? null;
 
   const domainSettingsResult = await pool.query(
-    `SELECT md.gsc_site_url, md.competitor_domains, u.gsc_refresh_token
+    `SELECT md.gsc_site_url, md.competitor_domains, u.gsc_refresh_token, u.ga4_refresh_token, u.ga4_property_id
      FROM monitored_domains md JOIN users u ON u.id = md.user_id
      WHERE md.user_id = $1 AND md.domain = $2`,
     [userId, domain]
   );
   const gscLink = domainSettingsResult.rows[0];
   const competitorDomains = domainSettingsResult.rows[0]?.competitor_domains ?? [];
+
+  const gscReady = !!(gscLink?.gsc_site_url && gscLink?.gsc_refresh_token);
+  // Shared between the gsc and ga4 tasks below so a GSC+GA4 audit refreshes
+  // this refresh token once, not twice — the promise is memoized, so both
+  // .then() calls reuse the same in-flight/resolved access token.
+  const gscAccessTokenPromise = gscReady ? googleSearchConsole.refreshAccessToken(gscLink.gsc_refresh_token) : null;
 
   const tasks = {
     technical: categories.includes('technical')
@@ -257,29 +264,61 @@ async function processAuditJob(job) {
     trustSignals: categories.includes('technical')
       ? trustSignals.checkTrustSignals(domain).catch(() => null)
       : Promise.resolve(null),
-    gsc:
-      gscLink?.gsc_site_url && gscLink?.gsc_refresh_token
-        ? googleSearchConsole
-            .refreshAccessToken(gscLink.gsc_refresh_token)
-            .then((accessToken) => googleSearchConsole.querySearchAnalytics(accessToken, gscLink.gsc_site_url))
+    gsc: gscReady
+      ? gscAccessTokenPromise
+          .then((accessToken) => googleSearchConsole.querySearchAnalytics(accessToken, gscLink.gsc_site_url))
+          .catch((err) => {
+            console.error('GSC fetch failed for audit', auditId, ':', err.response?.data || err.message);
+            return null;
+          })
+      : Promise.resolve(null),
+    // Cross of GSC clicks (volume) with GA4 organic traffic quality (bounce/
+    // engagement rate, conversions) for the same landing pages — needs both
+    // connected and this domain linked to a GSC property, since GA4's
+    // property_id lives on the user (not per domain) and only makes sense
+    // matched against this domain's GSC page list. Reuses gscAccessTokenPromise
+    // (shared with the gsc task above) instead of refreshing the same GSC
+    // refresh token a second time.
+    ga4:
+      gscReady && gscLink?.ga4_refresh_token && gscLink?.ga4_property_id
+        ? Promise.all([
+            gscAccessTokenPromise.then((accessToken) => googleSearchConsole.queryTopPages(accessToken, gscLink.gsc_site_url)),
+            googleAnalytics
+              .refreshAccessToken(gscLink.ga4_refresh_token)
+              .then((accessToken) => googleAnalytics.getTrafficQuality(accessToken, gscLink.ga4_property_id)),
+          ])
+            .then(([gscPages, ga4Pages]) => ({
+              propertyId: gscLink.ga4_property_id,
+              pages: googleAnalytics.crossWithGscPages(gscPages, ga4Pages),
+            }))
             .catch((err) => {
-              console.error('GSC fetch failed for audit', auditId, ':', err.response?.data || err.message);
+              console.error('GA4 fetch failed for audit', auditId, ':', err.response?.data || err.message);
               return null;
             })
         : Promise.resolve(null),
   };
 
-  const [technical, content, backlinks, backlinkGap, coreWebVitalsResult, crawlabilityResult, trustSignalsResult, gscResult] =
-    await Promise.all([
-      tasks.technical,
-      tasks.content,
-      tasks.backlinks,
-      tasks.backlinkGap,
-      tasks.coreWebVitals,
-      tasks.crawlability,
-      tasks.trustSignals,
-      tasks.gsc,
-    ]);
+  const [
+    technical,
+    content,
+    backlinks,
+    backlinkGap,
+    coreWebVitalsResult,
+    crawlabilityResult,
+    trustSignalsResult,
+    gscResult,
+    ga4Result,
+  ] = await Promise.all([
+    tasks.technical,
+    tasks.content,
+    tasks.backlinks,
+    tasks.backlinkGap,
+    tasks.coreWebVitals,
+    tasks.crawlability,
+    tasks.trustSignals,
+    tasks.gsc,
+    tasks.ga4,
+  ]);
 
   // Orphan-page/broken-internal-link detection needs both the crawl's own
   // page_links (from `technical`) and the sitemap's URL inventory (from
@@ -383,8 +422,8 @@ async function processAuditJob(job) {
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
      keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
      core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, content_gap_result = $11,
-     backlink_gap_result = $12, trust_signals_result = $13, completed_at = now()
-     WHERE id = $14`,
+     backlink_gap_result = $12, trust_signals_result = $13, ga4_result = $14, completed_at = now()
+     WHERE id = $15`,
     [
       technical,
       content,
@@ -399,6 +438,7 @@ async function processAuditJob(job) {
       JSON.stringify(contentGapResult),
       JSON.stringify(backlinkGap),
       JSON.stringify(trustSignalsResult),
+      JSON.stringify(ga4Result),
       auditId,
     ]
   );
@@ -421,7 +461,7 @@ async function processAuditJob(job) {
     }
   }
 
-  return { score, previousScore, gscResult };
+  return { score, previousScore, gscResult, ga4Result };
 }
 
 module.exports = { processAuditJob, SCORE_DROP_ALERT_THRESHOLD };

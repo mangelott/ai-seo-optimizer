@@ -110,6 +110,19 @@ Código pronto em `backend/routes/gsc.js` e `backend/services/googleSearchConsol
 
 Sem isto configurado, o botão "Ligar Google Search Console" nas Definições leva a um ecrã de erro do próprio Google — não quebra o resto da app. Depois de ligado, cada domínio monitorizado pode ser associado a uma propriedade verificada da Search Console (o utilizador só vê propriedades onde já tem acesso confirmado na própria conta Google).
 
+## Google Analytics 4 — qualidade de conversão cruzada com a Search Console
+
+Código pronto em `backend/routes/ga4.js` e `backend/services/googleAnalytics.js` — segue exatamente o mesmo padrão da Google Search Console acima: liga a conta Google do utilizador (scope `analytics.readonly`), com o mesmo fluxo OAuth separado (`connect`/`callback`/`status`/`disconnect`), reaproveitando `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`. Ao contrário da Search Console, a propriedade GA4 escolhida (`ga4_property_id`) fica associada à conta do utilizador, não a um domínio monitorizado específico — é o mesmo GA4 que se cruza com a Search Console de cada domínio.
+
+Hoje a Search Console só mostra volume (cliques, impressões). Sempre que um domínio tem **Search Console ligada e associada** e o utilizador tem **GA4 ligado e com uma propriedade escolhida**, a auditoria cruza as páginas com mais cliques na Search Console com a qualidade real de tráfego orgânico dessas mesmas páginas no GA4 (sessões, taxa de envolvimento, taxa de rejeição, conversões) — fica em `audits.ga4_result`, visível no relatório numa secção "Cliques vs. qualidade de conversão". Páginas que a Search Console reporta mas que o GA4 não tem tráfego orgânico associado (fora da janela de 28 dias, ou path diferente) ficam de fora do cruzamento em vez de aparecerem com qualidade em falta.
+
+Para ativar:
+1. No mesmo projeto do Google Cloud Console usado para o login/Search Console, vai a **APIs & Services → Library** e ativa a **Google Analytics Admin API** e a **Google Analytics Data API**.
+2. Em **APIs & Services → Credentials**, na credencial OAuth já existente, adiciona em **Authorized redirect URIs**: `http://localhost:4000/api/ga4/callback` (dev) e o equivalente em produção (`https://<teu-backend>/api/ga4/callback`).
+3. Preenche `GA4_REDIRECT_URI` no `.env` com esse mesmo URI (não precisa de credenciais novas).
+
+Sem isto configurado, o botão "Ligar Google Analytics" nas Definições leva a um ecrã de erro do próprio Google — não quebra o resto da app. Como as restantes categorias, uma falha no GA4 nunca bloqueia o resto da auditoria (`ga4_result` fica `null` no relatório).
+
 ## Core Web Vitals
 
 Código pronto em `backend/services/coreWebVitals.js`, integrado na auditoria técnica junto de `technical`/`content`/`backlinks` (sempre que a categoria `technical` está incluída no plano). Devolve LCP, INP e CLS já classificados (`good` / `needs-improvement` / `poor`) segundo os thresholds publicados pela Google, mais o `performanceScore` geral. Tenta primeiro o endpoint Lighthouse do DataForSEO (`on_page/lighthouse/live/json`) e, se a conta não tiver acesso a esse endpoint (ou a chamada falhar por qualquer razão), recorre automaticamente à [PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started) da Google, que é gratuita — preferindo aí dados de campo reais (CrUX) e só caindo para dados de laboratório (Lighthouse simulado) quando não há CrUX disponível para o URL. Como as restantes categorias, uma falha nunca bloqueia o resto da auditoria (`core_web_vitals` fica `null` no relatório).
@@ -203,7 +216,7 @@ Há um blueprint pronto em [`render.yaml`](render.yaml) — cria o backend, o wo
 
 1. Em [dashboard.render.com](https://dashboard.render.com/) → **New +** → **Blueprint**.
 2. Liga a conta GitHub e escolhe o repositório `ai-seo-optimizer`. O Render deteta o `render.yaml` automaticamente.
-3. No ecrã de review, o Render pede para preencheres as variáveis marcadas `sync: false` (não geradas automaticamente): `FRONTEND_URL`, `ANTHROPIC_API_KEY`, `DATAFORSEO_LOGIN`/`PASSWORD`, `STRIPE_SECRET_KEY`/`WEBHOOK_SECRET`/`PRICE_*`, `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI`, `GSC_REDIRECT_URI`, `RESEND_API_KEY`, `EMAIL_FROM`. `DATABASE_URL`, `REDIS_URL` e `JWT_SECRET` ficam tratados automaticamente pelo blueprint.
+3. No ecrã de review, o Render pede para preencheres as variáveis marcadas `sync: false` (não geradas automaticamente): `FRONTEND_URL`, `ANTHROPIC_API_KEY`, `DATAFORSEO_LOGIN`/`PASSWORD`, `STRIPE_SECRET_KEY`/`WEBHOOK_SECRET`/`PRICE_*`, `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI`, `GSC_REDIRECT_URI`, `GA4_REDIRECT_URI`, `RESEND_API_KEY`, `EMAIL_FROM`. `DATABASE_URL`, `REDIS_URL` e `JWT_SECRET` ficam tratados automaticamente pelo blueprint.
 4. Aplica o blueprint. O schema da base de dados é aplicado sozinho antes de cada deploy (`preDeployCommand: npm run migrate`).
 5. Depois do primeiro deploy, copia o URL público do serviço `ai-seo-optimizer-api` (algo como `https://ai-seo-optimizer-api.onrender.com`) — vais precisar dele nos passos seguintes.
 
@@ -218,7 +231,7 @@ Há um blueprint pronto em [`render.yaml`](render.yaml) — cria o backend, o wo
 
 - No Render, atualiza `FRONTEND_URL` do backend para o domínio real do Vercel (usado nos redirects do Google OAuth, nos links de recuperação de password, e nas URLs de sucesso/cancelamento do Stripe Checkout).
 - No Stripe Dashboard → Webhooks, atualiza (ou cria) o endpoint para `https://<backend-no-render>/api/billing/webhook` e copia o novo signing secret para `STRIPE_WEBHOOK_SECRET`.
-- No Google Cloud Console, atualiza o **Authorized redirect URI** da credencial OAuth para `https://<backend-no-render>/api/auth/google/callback`, igual ao `GOOGLE_REDIRECT_URI` (e, se a Search Console estiver ativa, adiciona também `https://<backend-no-render>/api/gsc/callback`, igual ao `GSC_REDIRECT_URI`).
+- No Google Cloud Console, atualiza o **Authorized redirect URI** da credencial OAuth para `https://<backend-no-render>/api/auth/google/callback`, igual ao `GOOGLE_REDIRECT_URI` (e, se a Search Console/GA4 estiverem ativos, adiciona também `https://<backend-no-render>/api/gsc/callback` e `https://<backend-no-render>/api/ga4/callback`, iguais a `GSC_REDIRECT_URI`/`GA4_REDIRECT_URI`).
 
 ## Roadmap
 

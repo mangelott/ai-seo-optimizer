@@ -122,6 +122,24 @@ export default function ReportBody({
         </div>
       )}
 
+      {audit.ga4_result?.pages?.length > 0 && (
+        <div className={styles.structureSection}>
+          <div className={styles.structureSectionTitle}>{t('report.searchPerformanceTitle')}</div>
+          <ul className={styles.structureList}>
+            {audit.ga4_result.pages.map((p) => (
+              <li key={p.page} className={styles.structureListItem}>
+                <span className={styles.structureLinkTo}>{p.page}</span>
+                {' — '}
+                {p.clicks} {t('report.searchPerformanceClicks').toLowerCase()} · {p.sessions}{' '}
+                {t('report.searchPerformanceSessions').toLowerCase()} · {(p.engagementRate * 100).toFixed(0)}%{' '}
+                {t('report.searchPerformanceEngagement').toLowerCase()} · {p.conversions}{' '}
+                {t('report.searchPerformanceConversions').toLowerCase()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {audit.core_web_vitals && (
         <div className={styles.cwvRow}>
           {['lcp', 'inp', 'cls'].map((metric) => {
