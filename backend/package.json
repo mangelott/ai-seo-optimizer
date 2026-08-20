@@ -9,7 +9,7 @@
     "migrate": "node db/migrate.js",
     "test": "node --test --test-concurrency=1",
     "test:unit": "node --test test/scoring.test.js test/claude.test.js test/contentGap.test.js test/plans.test.js test/wordpressPlugin.test.js",
-    "test:integration": "node --test --test-concurrency=1 test/api.test.js test/recurringAudits.test.js test/wordpress.test.js test/teams.test.js test/security.test.js test/auditWorker.test.js test/github.test.js test/siteCrawl.test.js test/coreWebVitals.test.js test/serpAnalysis.test.js test/aeoTracking.test.js test/aeoJob.test.js test/aeo.test.js",
+    "test:integration": "node --test --test-concurrency=1 test/api.test.js test/recurringAudits.test.js test/wordpress.test.js test/teams.test.js test/teamsPortfolio.test.js test/security.test.js test/auditWorker.test.js test/github.test.js test/siteCrawl.test.js test/coreWebVitals.test.js test/serpAnalysis.test.js test/aeoTracking.test.js test/aeoJob.test.js test/aeo.test.js",
     "lint:php": "docker run --rm -v \"$(pwd)/../wordpress-plugin:/app\" php:8.3-cli php -l /app/ai-seo-optimizer-connector.php"
   },
   "keywords": [],

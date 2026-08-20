@@ -16,7 +16,8 @@
     "dashboard": "Dashboard",
     "history": "History",
     "settings": "Settings",
-    "billing": "Billing"
+    "billing": "Billing",
+    "portfolio": "Portfolio"
   },
   "footer": {
     "tagline": "Actionable SEO for people who don't have time to become an expert.",
@@ -345,6 +346,17 @@
     "colDate": "Date",
     "colDescription": "Description",
     "colAmount": "Amount"
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "subtitle": "Every domain your team monitors, at a glance.",
+    "agencyOnly": "Portfolio is an Agency plan feature — upgrade to see every domain your team monitors in one table.",
+    "emptyState": "No monitored domains yet. Add one from the dashboard to see it here.",
+    "colDomain": "Domain",
+    "colScore": "Score",
+    "colTrend": "Trend",
+    "colAlerts": "Alerts",
+    "alertScoreDrop": "Score dropped {{delta}}"
   },
   "paywall": {
     "title": "You've hit the Free plan limit",

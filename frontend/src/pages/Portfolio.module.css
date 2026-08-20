@@ -1,0 +1,79 @@
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.tableCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.headRow {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.5fr;
+  gap: 8px;
+  padding: 12px 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  background: var(--surface2);
+  text-transform: uppercase;
+}
+
+.sortHeader {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sortHeader:hover {
+  color: var(--text-muted);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.5fr;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  align-items: center;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--surface2);
+}
+
+.domain {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty {
+  font-size: 14px;
+  color: var(--text-faint);
+  padding: 40px 0;
+  text-align: center;
+}

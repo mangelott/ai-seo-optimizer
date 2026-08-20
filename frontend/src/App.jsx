@@ -14,6 +14,7 @@ import Report from './pages/Report';
 import History from './pages/History';
 import Settings from './pages/Settings';
 import Billing from './pages/Billing';
+import Portfolio from './pages/Portfolio';
 
 function RequireAuth({ children }) {
   const token = localStorage.getItem('token');
@@ -79,6 +80,14 @@ function App() {
           element={
             <RequireAuth>
               <Billing />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/portfolio"
+          element={
+            <RequireAuth>
+              <Portfolio />
             </RequireAuth>
           }
         />

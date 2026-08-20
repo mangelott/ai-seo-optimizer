@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ThemeToggle from '../ui/ThemeToggle';
 import LanguageSwitcher from '../ui/LanguageSwitcher';
+import api from '../../api/client';
 import styles from './DashboardLayout.module.css';
 
 const NAV_ITEMS = [
@@ -11,9 +13,21 @@ const NAV_ITEMS = [
   { to: '/billing', icon: '💳', key: 'billing' },
 ];
 
+// Portfolio is Agency-only (same plan === 'agency' gate as the team card in
+// Settings.jsx) — only shown once the plan fetch resolves, so it never
+// flashes for users on a lower plan.
+const PORTFOLIO_ITEM = { to: '/portfolio', icon: '🗂️', key: 'portfolio' };
+
 export default function DashboardLayout({ children, maxWidth }) {
   const { t } = useTranslation();
   const location = useLocation();
+  const [plan, setPlan] = useState(null);
+
+  useEffect(() => {
+    api.get('/auth/me').then(({ data }) => setPlan(data.plan));
+  }, []);
+
+  const navItems = plan === 'agency' ? [...NAV_ITEMS, PORTFOLIO_ITEM] : NAV_ITEMS;
 
   return (
     <div className={styles.shell}>
@@ -30,7 +44,7 @@ export default function DashboardLayout({ children, maxWidth }) {
         </div>
         <div className={styles.body}>
           <div className={styles.sidebar}>
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active =
                 location.pathname === item.to ||
                 (item.to === '/dashboard' && location.pathname.startsWith('/audits/'));

@@ -16,7 +16,8 @@
     "dashboard": "Dashboard",
     "history": "Histórico",
     "settings": "Definições",
-    "billing": "Billing"
+    "billing": "Billing",
+    "portfolio": "Portfólio"
   },
   "footer": {
     "tagline": "SEO acionável para quem não tem tempo de ser especialista.",
@@ -345,6 +346,17 @@
     "colDate": "Data",
     "colDescription": "Descrição",
     "colAmount": "Valor"
+  },
+  "portfolio": {
+    "title": "Portfólio",
+    "subtitle": "Todos os domínios monitorizados pela tua equipa, num relance.",
+    "agencyOnly": "O Portfólio é uma funcionalidade do plano Agency — faz upgrade para ver todos os domínios da tua equipa numa única tabela.",
+    "emptyState": "Ainda não há domínios monitorizados. Adiciona um a partir do dashboard para o veres aqui.",
+    "colDomain": "Domínio",
+    "colScore": "Score",
+    "colTrend": "Tendência",
+    "colAlerts": "Alertas",
+    "alertScoreDrop": "Score caiu {{delta}}"
   },
   "paywall": {
     "title": "Atingiste o limite do plano Free",

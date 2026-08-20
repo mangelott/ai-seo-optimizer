@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
 const { sendTeamInviteEmail } = require('../services/email');
+const { SCORE_DROP_ALERT_THRESHOLD } = require('../services/auditProcessor');
 
 const router = express.Router();
 
@@ -9,6 +10,59 @@ async function getTeamForOwner(userId) {
   const result = await pool.query('SELECT * FROM teams WHERE owner_user_id = $1', [userId]);
   return result.rows[0];
 }
+
+// Portfolio: one row per domain visible to the caller (their own domains, or
+// the whole team's if they're on one — same visibility subquery as GET
+// /api/domains and GET /api/audit), with the latest audit score, the trend
+// vs the previous audit for that domain, and any active alerts. There's no
+// persisted "alerts" concept in this codebase yet (see auditProcessor.js's
+// SCORE_DROP_ALERT_THRESHOLD, which only ever fires a one-off email) — this
+// recomputes the same score-drop check live from the latest two audits
+// instead of introducing a new alerts table for a single alert type.
+router.get('/portfolio', requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `WITH visible_domains AS (
+       SELECT DISTINCT domain FROM monitored_domains
+       WHERE user_id IN (SELECT id FROM users WHERE id = $1 OR team_id = (SELECT team_id FROM users WHERE id = $1))
+     ),
+     ranked_audits AS (
+       SELECT domain, score, created_at,
+              ROW_NUMBER() OVER (PARTITION BY domain ORDER BY created_at DESC) AS rn
+       FROM audits
+       WHERE user_id IN (SELECT id FROM users WHERE id = $1 OR team_id = (SELECT team_id FROM users WHERE id = $1))
+         AND score IS NOT NULL
+         AND domain IN (SELECT domain FROM visible_domains)
+     )
+     SELECT vd.domain,
+            latest.score AS latest_score, latest.created_at AS latest_audit_at,
+            previous.score AS previous_score
+     FROM visible_domains vd
+     LEFT JOIN ranked_audits latest ON latest.domain = vd.domain AND latest.rn = 1
+     LEFT JOIN ranked_audits previous ON previous.domain = vd.domain AND previous.rn = 2
+     ORDER BY vd.domain ASC`,
+    [req.user.id]
+  );
+
+  const portfolio = result.rows.map((row) => {
+    const latestScore = row.latest_score;
+    const previousScore = row.previous_score;
+    const trend = latestScore != null && previousScore != null ? latestScore - previousScore : null;
+    const alerts = [];
+    if (trend != null && previousScore - latestScore >= SCORE_DROP_ALERT_THRESHOLD) {
+      alerts.push({ type: 'score_drop', delta: trend });
+    }
+    return {
+      domain: row.domain,
+      latestScore,
+      latestAuditAt: row.latest_audit_at,
+      previousScore,
+      trend,
+      alerts,
+    };
+  });
+
+  res.json(portfolio);
+});
 
 router.get('/me', requireAuth, async (req, res) => {
   const userResult = await pool.query('SELECT team_id, plan FROM users WHERE id = $1', [req.user.id]);
