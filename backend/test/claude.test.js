@@ -107,6 +107,20 @@ test('system prompt suggests targeting People Also Ask questions as subheadings,
   assert.match(prompt, /H2\/H3 subheadings/);
 });
 
+test('system prompt flags missing authorship signals on long-form editorial content, at medium severity', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"authorshipSignals"/);
+  assert.match(prompt, /"hasAnySignal" false/);
+  assert.match(prompt, /severity "medium"/);
+  assert.match(prompt, /E-E-A-T/);
+});
+
+test('system prompt tells the model not to invent an author identity for the authorship fix', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /cmsAutoApplicable false/);
+  assert.match(prompt, /inventing an author/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);

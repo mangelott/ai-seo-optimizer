@@ -111,6 +111,63 @@ function extractFirstParagraphs($, count = 3) {
     .slice(0, count);
 }
 
+// E-E-A-T authorship signals: does the page identify who wrote it, either
+// through structured data (an "author"/"Person" node an LLM or Google can
+// parse) or a visible byline a human reader can see. Reuses the same
+// script[type="application/ld+json"] parsing as extractStructuredData
+// above, tolerating parse errors silently since extractStructuredData
+// already surfaces those separately — this only cares whether a usable
+// author name is present.
+function hasAuthorSchema($) {
+  let found = false;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (found) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(($(el).html() || '').trim());
+    } catch {
+      return;
+    }
+    const nodes = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.['@graph']) ? parsed['@graph'] : [parsed];
+    for (const node of nodes) {
+      const type = normalizeType(node);
+      if (type === 'Person' && !isEmptyValue(node?.name)) {
+        found = true;
+        break;
+      }
+      if (!isEmptyValue(node?.author)) {
+        const author = Array.isArray(node.author) ? node.author[0] : node.author;
+        const authorName = typeof author === 'string' ? author : author?.name;
+        if (!isEmptyValue(authorName)) {
+          found = true;
+          break;
+        }
+      }
+    }
+  });
+  return found;
+}
+
+// Heuristic only, not a guarantee of a real byline: rel="author" links,
+// elements whose class mentions "author"/"byline" (case-insensitive, as
+// seen in the wild: "Author-Name", "post-byline", etc.), and <address>
+// tags (the HTML spec's own element for author/contact info), each
+// counted only when they have visible text.
+function hasVisibleByline($) {
+  const hasVisibleText = (selector) => $(selector).filter((_, el) => $(el).text().trim().length > 0).length > 0;
+  return (
+    hasVisibleText('[rel="author"]') ||
+    hasVisibleText('[class*="author" i], [class*="byline" i]') ||
+    hasVisibleText('address')
+  );
+}
+
+function extractAuthorshipSignals($) {
+  const schema = hasAuthorSchema($);
+  const byline = hasVisibleByline($);
+  return { hasAuthorSchema: schema, hasVisibleByline: byline, hasAnySignal: schema || byline };
+}
+
 async function analyzeContent(url, language = 'en') {
   const { data: html } = await axios.get(url, { timeout: 10000 });
   const $ = cheerio.load(html);
@@ -128,6 +185,7 @@ async function analyzeContent(url, language = 'en') {
   const structuredData = extractStructuredData($);
   const questionHeadings = extractQuestionHeadings($);
   const firstParagraphs = extractFirstParagraphs($);
+  const authorshipSignals = extractAuthorshipSignals($);
 
   // Script/style content isn't prose, so it's excluded here even though the
   // existing wordCount above (kept as-is, for compatibility) doesn't bother.
@@ -148,9 +206,17 @@ async function analyzeContent(url, language = 'en') {
     structuredData,
     questionHeadings,
     firstParagraphs,
+    authorshipSignals,
     readabilityScore: readability?.score ?? null,
     readabilityLabel: readability?.label ?? null,
   };
 }
 
-module.exports = { analyzeContent, extractStructuredData, validateNode, extractQuestionHeadings, extractFirstParagraphs };
+module.exports = {
+  analyzeContent,
+  extractStructuredData,
+  validateNode,
+  extractQuestionHeadings,
+  extractFirstParagraphs,
+  extractAuthorshipSignals,
+};
