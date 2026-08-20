@@ -31,6 +31,7 @@ function setupApiDefaults({
   gscSites = [],
   githubStatus = { connected: false },
   githubRepos = [],
+  rankKeywords = {},
 } = {}) {
   api.get.mockImplementation((path) => {
     if (path === '/auth/me') return resolved(me);
@@ -40,6 +41,10 @@ function setupApiDefaults({
     if (path === '/gsc/sites') return resolved(gscSites);
     if (path === '/github/status') return resolved(githubStatus);
     if (path === '/github/repos') return resolved(githubRepos);
+    if (path.startsWith('/rank-tracking/keywords')) {
+      const domain = decodeURIComponent(path.split('domain=')[1] || '');
+      return resolved(rankKeywords[domain] || []);
+    }
     return Promise.reject(new Error(`Unhandled GET ${path}`));
   });
 }
@@ -393,6 +398,93 @@ describe('Settings: monitored domains', () => {
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith('/gsc/domains/5', { siteUrl: 'https://example.com/' });
     });
+  });
+});
+
+describe('Settings: rank tracking', () => {
+  const domain = { id: 5, domain: 'https://example.com', recurring_enabled: false, auto_fix_enabled: false, wp_url: null };
+
+  it('shows the empty state when no keywords are tracked yet', async () => {
+    setupApiDefaults({ domains: [domain] });
+    renderSettings();
+    await screen.findByText('example.com');
+    expect(screen.getByText('No keywords tracked yet for this domain.')).toBeInTheDocument();
+  });
+
+  it('lists tracked keywords with their latest position, or "not checked yet" when never checked', async () => {
+    setupApiDefaults({
+      domains: [domain],
+      rankKeywords: {
+        'https://example.com': [
+          { id: 1, keyword: 'best coffee lisbon', last_checked_at: '2026-01-01', latest_position: 4 },
+          { id: 2, keyword: 'never checked keyword', last_checked_at: null, latest_position: null },
+        ],
+      },
+    });
+    renderSettings();
+
+    expect(await screen.findByText('best coffee lisbon — #4')).toBeInTheDocument();
+    expect(screen.getByText('never checked keyword — Not checked yet')).toBeInTheDocument();
+  });
+
+  it('shows "not in top 10" for a checked keyword with no ranking result', async () => {
+    setupApiDefaults({
+      domains: [domain],
+      rankKeywords: {
+        'https://example.com': [{ id: 1, keyword: 'unranked keyword', last_checked_at: '2026-01-01', latest_position: null }],
+      },
+    });
+    renderSettings();
+
+    expect(await screen.findByText('unranked keyword — Not in top 10')).toBeInTheDocument();
+  });
+
+  it('adds a tracked keyword and reloads the list', async () => {
+    setupApiDefaults({ domains: [domain] });
+    api.post.mockResolvedValue({ data: { id: 9, keyword: 'best coffee lisbon', last_checked_at: null } });
+    renderSettings();
+
+    await screen.findByText('example.com');
+    fireEvent.change(screen.getByLabelText('e.g. best coffee lisbon'), { target: { value: 'best coffee lisbon' } });
+    fireEvent.click(screen.getByText('Track'));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/rank-tracking/keywords', {
+        domain: 'https://example.com',
+        keyword: 'best coffee lisbon',
+      });
+    });
+    // loadRankKeywords() re-fetches after a successful add.
+    await waitFor(() =>
+      expect(api.get.mock.calls.filter((c) => c[0].startsWith('/rank-tracking/keywords')).length).toBeGreaterThanOrEqual(2)
+    );
+  });
+
+  it('shows an inline error when the plan does not include rank tracking', async () => {
+    setupApiDefaults({ domains: [domain] });
+    api.post.mockImplementation(() => rejected('Rank tracking is not included in your plan. Upgrade to Pro or Agency.'));
+    renderSettings();
+
+    await screen.findByText('example.com');
+    fireEvent.change(screen.getByLabelText('e.g. best coffee lisbon'), { target: { value: 'best coffee lisbon' } });
+    fireEvent.click(screen.getByText('Track'));
+
+    expect(await screen.findByText('Rank tracking is not included in your plan. Upgrade to Pro or Agency.')).toBeInTheDocument();
+  });
+
+  it('removes a tracked keyword from the list', async () => {
+    setupApiDefaults({
+      domains: [domain],
+      rankKeywords: { 'https://example.com': [{ id: 1, keyword: 'best coffee lisbon', last_checked_at: null, latest_position: null }] },
+    });
+    api.delete.mockResolvedValue({ data: { ok: true } });
+    renderSettings();
+
+    const keywordRow = (await screen.findByText('best coffee lisbon — Not checked yet')).closest('div');
+    fireEvent.click(within(keywordRow).getByText('Remove'));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/rank-tracking/keywords/1'));
+    await waitFor(() => expect(screen.queryByText('best coffee lisbon — Not checked yet')).not.toBeInTheDocument());
   });
 });
 

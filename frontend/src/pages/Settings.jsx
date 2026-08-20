@@ -31,6 +31,10 @@ export default function Settings() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [githubRepos, setGithubRepos] = useState([]);
   const [githubNotice, setGithubNotice] = useState('');
+  const [rankKeywords, setRankKeywords] = useState({});
+  const [rankKeywordInputs, setRankKeywordInputs] = useState({});
+  const [rankBusy, setRankBusy] = useState({});
+  const [rankErrors, setRankErrors] = useState({});
   const [plan, setPlan] = useState(null);
   const [team, setTeam] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -52,7 +56,10 @@ export default function Settings() {
       setEmail(data.email || '');
       setPlan(data.plan);
     });
-    api.get('/domains').then(({ data }) => setDomains(data));
+    api.get('/domains').then(({ data }) => {
+      setDomains(data);
+      data.forEach((d) => loadRankKeywords(d.id, d.domain));
+    });
     api.get('/gsc/status').then(({ data }) => setGscConnected(data.connected));
     api.get('/github/status').then(({ data }) => setGithubConnected(data.connected));
     loadTeam();
@@ -159,6 +166,38 @@ export default function Settings() {
       branch: fullName ? repo?.defaultBranch || 'main' : null,
     });
     setDomains((d) => d.map((x) => (x.id === domainId ? { ...x, ...data } : x)));
+  }
+
+  function loadRankKeywords(domainId, domain) {
+    api
+      .get(`/rank-tracking/keywords?domain=${encodeURIComponent(domain)}`)
+      .then(({ data }) => setRankKeywords((r) => ({ ...r, [domainId]: data })))
+      .catch(() => setRankKeywords((r) => ({ ...r, [domainId]: [] })));
+  }
+
+  function updateRankKeywordInput(domainId, value) {
+    setRankKeywordInputs((f) => ({ ...f, [domainId]: value }));
+  }
+
+  async function addRankKeyword(domainObj) {
+    const keyword = (rankKeywordInputs[domainObj.id] || '').trim();
+    if (!keyword) return;
+    setRankBusy((b) => ({ ...b, [domainObj.id]: true }));
+    setRankErrors((e) => ({ ...e, [domainObj.id]: '' }));
+    try {
+      await api.post('/rank-tracking/keywords', { domain: domainObj.domain, keyword });
+      setRankKeywordInputs((f) => ({ ...f, [domainObj.id]: '' }));
+      loadRankKeywords(domainObj.id, domainObj.domain);
+    } catch (err) {
+      setRankErrors((e) => ({ ...e, [domainObj.id]: err.response?.data?.error || 'Error' }));
+    } finally {
+      setRankBusy((b) => ({ ...b, [domainObj.id]: false }));
+    }
+  }
+
+  async function removeRankKeyword(domainId, keywordId) {
+    await api.delete(`/rank-tracking/keywords/${keywordId}`);
+    setRankKeywords((r) => ({ ...r, [domainId]: (r[domainId] || []).filter((k) => k.id !== keywordId) }));
   }
 
   async function createTeam(e) {
@@ -556,6 +595,53 @@ export default function Settings() {
                   </div>
                 </div>
               )}
+
+              <div className={styles.recurringRow}>
+                <div style={{ width: '100%' }}>
+                  <Label>{t('settings.rankTitle')}</Label>
+                  <p className={styles.dangerText} style={{ marginTop: 4 }}>{t('settings.rankDesc')}</p>
+                  <div className={styles.recurringOptions} style={{ marginTop: 10, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <Input
+                        aria-label={t('settings.rankKeywordPlaceholder')}
+                        placeholder={t('settings.rankKeywordPlaceholder')}
+                        value={rankKeywordInputs[d.id] || ''}
+                        onChange={(e) => updateRankKeywordInput(d.id, e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={() => addRankKeyword(d)}
+                      disabled={rankBusy[d.id] || !(rankKeywordInputs[d.id] || '').trim()}
+                    >
+                      {rankBusy[d.id] ? t('settings.rankAdding') : t('settings.rankAdd')}
+                    </Button>
+                  </div>
+                  {rankErrors[d.id] && <p className={styles.error}>{rankErrors[d.id]}</p>}
+                  <div className={styles.domainsList} style={{ marginTop: 10 }}>
+                    {!rankKeywords[d.id]?.length ? (
+                      <p className={styles.dangerText}>{t('settings.rankEmptyState')}</p>
+                    ) : (
+                      rankKeywords[d.id].map((k) => (
+                        <div className={styles.domainRow} key={k.id}>
+                          <span style={{ fontSize: 13, color: 'var(--text)' }}>
+                            {k.keyword} —{' '}
+                            {k.latest_position != null
+                              ? `#${k.latest_position}`
+                              : k.last_checked_at
+                                ? t('settings.rankPositionUnranked')
+                                : t('settings.rankPositionNeverChecked')}
+                          </span>
+                          <button className={styles.removeBtn} onClick={() => removeRankKeyword(d.id, k.id)}>
+                            {t('settings.rankRemove')}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
         </div>

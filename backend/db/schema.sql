@@ -150,6 +150,37 @@ CREATE TABLE IF NOT EXISTS aeo_competitor_citations (
 CREATE INDEX IF NOT EXISTS idx_aeo_competitor_citations_lookup
   ON aeo_competitor_citations(user_id, domain, query, competitor_domain, provider, checked_at DESC);
 
+-- Keywords a user wants position-tracked over time for a domain, and the
+-- checks logged for each one — same time-series modeling as aeo_target_queries
+-- / aeo_queries above (a single audit run has no natural relationship to
+-- "what rank was this keyword at today"; checks are driven by
+-- jobs/rankTracking.js on its own schedule).
+CREATE TABLE IF NOT EXISTS tracked_keywords (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  last_checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (user_id, domain, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_keywords_user_domain ON tracked_keywords(user_id, domain);
+
+-- One row per check (jobs/rankTracking.js). position is the domain's rank
+-- among the top 10 organic results for that keyword (services/serpAnalysis.js
+-- getTopResults' own depth cap), or NULL when the domain isn't found there —
+-- same "unranked, not zero" convention as a real rank tracker.
+CREATE TABLE IF NOT EXISTS rank_tracking (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  domain TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  position INTEGER,
+  checked_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rank_tracking_user_domain_keyword ON rank_tracking(user_id, domain, keyword);
+CREATE INDEX IF NOT EXISTS idx_rank_tracking_checked_at ON rank_tracking(checked_at);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,

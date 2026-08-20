@@ -8,6 +8,7 @@ const PLANS = {
     siteWideCrawl: false,
     aeoQueriesPerMonth: 0,
     backlinkGapAnalysis: false,
+    rankTrackingChecksPerMonth: 0,
   },
   starter: {
     name: 'Starter',
@@ -18,6 +19,7 @@ const PLANS = {
     siteWideCrawl: false,
     aeoQueriesPerMonth: 0,
     backlinkGapAnalysis: false,
+    rankTrackingChecksPerMonth: 0,
   },
   pro: {
     name: 'Pro',
@@ -35,6 +37,17 @@ const PLANS = {
     // `backlinks` category (which only covers the flat-rate summary call) and
     // kept Agency-only for now.
     backlinkGapAnalysis: false,
+    // jobs/rankTracking.js checks daily (positions move faster than AI-assistant
+    // citations), so a per-domain headcount alone doesn't bound cost the way
+    // aeoQueriesPerMonth does — Pro allows up to 10 domains, so a per-domain cap
+    // would scale with domain count instead of staying a flat monthly budget like
+    // every other quota in this file. Capped as total checks/month instead — the
+    // same "provider calls spent" budget as aeoQueriesPerMonth, doubled because
+    // rank tracking hits one provider (DataForSEO) per check where AEO hits two
+    // (OpenAI + Perplexity) per check. The per-domain list itself is still capped,
+    // but only by a small fixed constant for readability (MAX_TRACKED_KEYWORDS_PER_DOMAIN
+    // in routes/trackedKeywords.js) — cost is bounded here, not by list size.
+    rankTrackingChecksPerMonth: 40,
   },
   agency: {
     name: 'Agency',
@@ -45,6 +58,7 @@ const PLANS = {
     siteWideCrawl: true,
     aeoQueriesPerMonth: 100,
     backlinkGapAnalysis: true,
+    rankTrackingChecksPerMonth: 200,
   },
 };
 

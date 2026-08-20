@@ -59,3 +59,20 @@ test('backlink gap analysis is Agency only — it is the most expensive backlink
   assert.equal(PLANS.pro.backlinkGapAnalysis, false);
   assert.equal(PLANS.agency.backlinkGapAnalysis, true);
 });
+
+test('rank tracking is capped on every plan, never unlimited — each check is a real paid SERP API call', () => {
+  for (const plan of Object.values(PLANS)) {
+    assert.ok(Number.isFinite(plan.rankTrackingChecksPerMonth), `${plan.name} must define a finite rankTrackingChecksPerMonth`);
+  }
+});
+
+test('only Pro and Agency include rank tracking, at the same total paid-provider-call budget as AEO tracking', () => {
+  assert.equal(PLANS.free.rankTrackingChecksPerMonth, 0);
+  assert.equal(PLANS.starter.rankTrackingChecksPerMonth, 0);
+  assert.ok(PLANS.pro.rankTrackingChecksPerMonth > 0);
+  assert.ok(PLANS.agency.rankTrackingChecksPerMonth > PLANS.pro.rankTrackingChecksPerMonth);
+  // AEO hits 2 providers/check, rank tracking hits 1, so double the queries
+  // buys the same total provider-call volume on each plan.
+  assert.equal(PLANS.pro.rankTrackingChecksPerMonth, PLANS.pro.aeoQueriesPerMonth * 2);
+  assert.equal(PLANS.agency.rankTrackingChecksPerMonth, PLANS.agency.aeoQueriesPerMonth * 2);
+});

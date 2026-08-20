@@ -13,6 +13,7 @@ const wordpressRoutes = require('./routes/wordpress');
 const teamsRoutes = require('./routes/teams');
 const githubRoutes = require('./routes/github');
 const aeoRoutes = require('./routes/aeo');
+const trackedKeywordsRoutes = require('./routes/trackedKeywords');
 
 const app = express();
 
@@ -36,5 +37,6 @@ app.use('/api/wordpress', wordpressRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/aeo', aeoRoutes);
+app.use('/api/rank-tracking', trackedKeywordsRoutes);
 
 module.exports = app;

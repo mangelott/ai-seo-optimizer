@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const app = require('./app');
 const { runDueRecurringAudits } = require('./jobs/recurringAudits');
 const { runDueAeoChecks } = require('./jobs/aeoTracking');
+const { runDueRankChecks } = require('./jobs/rankTracking');
 
 // Render's free tier doesn't offer a separate Background Worker service, so
 // the audit worker runs in-process here rather than as its own deployment.
@@ -21,6 +22,13 @@ cron.schedule('0 * * * *', () => {
 // frequent enough to keep drift to under a day without adding cost.
 cron.schedule('30 2 * * *', () => {
   runDueAeoChecks().catch((err) => console.error('AEO tracking run failed:', err));
+});
+
+// Hourly, like the recurring-audits check above (not daily like the AEO check):
+// rank checks are due daily at minimum (jobs/rankTracking.js), so an hourly
+// tick keeps drift to under a day, same reasoning as runDueRecurringAudits.
+cron.schedule('15 * * * *', () => {
+  runDueRankChecks().catch((err) => console.error('Rank tracking run failed:', err));
 });
 
 const PORT = process.env.PORT || 4000;
