@@ -15,6 +15,8 @@ const teamsRoutes = require('./routes/teams');
 const githubRoutes = require('./routes/github');
 const aeoRoutes = require('./routes/aeo');
 const trackedKeywordsRoutes = require('./routes/trackedKeywords');
+const apiKeysRoutes = require('./routes/apiKeys');
+const apiDocsRoutes = require('./routes/apiDocs');
 
 const app = express();
 
@@ -40,5 +42,7 @@ app.use('/api/teams', teamsRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/aeo', aeoRoutes);
 app.use('/api/rank-tracking', trackedKeywordsRoutes);
+app.use('/api/keys', apiKeysRoutes);
+app.use('/api/docs', apiDocsRoutes);
 
 module.exports = app;

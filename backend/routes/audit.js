@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
+const { requireAuthOrApiKey, apiKeyRateLimit } = require('../middleware/apiKeyAuth');
 const { enforcePlanLimit } = require('../middleware/planLimit');
 const { createAudit } = require('../services/auditRunner');
 const { decryptSecret } = require('../services/encryption');
@@ -9,7 +10,7 @@ const github = require('../services/github');
 
 const router = express.Router();
 
-router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
+router.post('/', requireAuthOrApiKey, apiKeyRateLimit, enforcePlanLimit, async (req, res) => {
   const { domain, language } = req.body;
   if (!domain) return res.status(400).json({ error: 'Domain is required' });
 
@@ -26,7 +27,7 @@ router.post('/', requireAuth, enforcePlanLimit, async (req, res) => {
 
 // Team members see each other's audits (shared agency workspace); solo
 // users only ever match themselves, since NULL never equals NULL in SQL.
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', requireAuthOrApiKey, apiKeyRateLimit, async (req, res) => {
   const result = await pool.query(
     `SELECT * FROM audits WHERE id = $1
      AND user_id IN (SELECT id FROM users WHERE id = $2 OR team_id = (SELECT team_id FROM users WHERE id = $2))`,

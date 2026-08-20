@@ -282,6 +282,27 @@ CREATE TABLE IF NOT EXISTS team_members (
   UNIQUE (team_id, invited_email)
 );
 
+-- API access (Agency plan only, see routes/apiKeys.js / middleware/apiKeyAuth.js):
+-- lets an Agency user call POST /api/audit, GET /api/audit/:id and GET
+-- /api/domains with an API key instead of the web app's JWT session. Only
+-- the SHA-256 hash of the key is stored (same lookup-hash pattern as
+-- users.reset_token_hash above) rather than reversible encryption
+-- (services/encryption.js) — unlike a WordPress Application Password, an API
+-- key is never sent back out to a third party, so there's no need to ever
+-- decrypt it again, only to compare hashes on each request.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_prefix TEXT NOT NULL,
+  last_used_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+
 -- Added after both tables exist (users.team_id predates the teams table in
 -- this file). ON DELETE SET NULL guarantees that whenever a team disappears
 -- — owner account deleted, team explicitly deleted, whatever the code path —

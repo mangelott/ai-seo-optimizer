@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { requireAuth } = require('../middleware/auth');
+const { requireAuthOrApiKey, apiKeyRateLimit } = require('../middleware/apiKeyAuth');
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ function validCompetitorDomains(domains) {
   return Array.isArray(domains) && domains.every((d) => typeof d === 'string' && d.trim());
 }
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuthOrApiKey, apiKeyRateLimit, async (req, res) => {
   const result = await pool.query(
     `SELECT id, domain, created_at, recurring_enabled, recurring_interval_days,
      recurring_delivery, last_recurring_run_at, auto_fix_enabled, wp_url, wp_username, gsc_site_url,

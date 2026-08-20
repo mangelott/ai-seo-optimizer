@@ -186,6 +186,16 @@ Código pronto em `backend/routes/teams.js`, `backend/services/teams.js` — nã
 
 Gestão da equipa (convidar, remover membros, editar white-label, eliminar equipa) é restrita ao dono; todos os membros só podem ver/consultar.
 
+## Acesso via API (plano Agency)
+
+Código pronto em `backend/routes/apiKeys.js`, `backend/middleware/apiKeyAuth.js`, `backend/services/apiKeys.js` e `backend/routes/apiDocs.js` — não precisa de nenhuma configuração externa. Deixa um utilizador Agency chamar a API diretamente (ex.: a partir do backend da própria agência) em vez de usar a app web, com uma API key em vez da sessão JWT.
+
+- **Gerar uma key**: `POST /api/keys` (autenticado por JWT, não por API key — gerir keys nunca é possível só com uma API key), com `{ "name": "..." }` no corpo. Exige plano Agency (efetivo — membros de equipa herdam o plano do dono, tal como no resto da app). A key só é devolvida uma vez, na criação (`saeo_...`); só o hash SHA-256 fica guardado (`api_keys.key_hash`), nunca a key em claro.
+- **Listar/revogar**: `GET /api/keys` lista as keys da conta (nome, prefixo, criada em, último uso, revogada em, nunca a key completa). `DELETE /api/keys/:id` revoga — uma key revogada deixa de autenticar de imediato.
+- **Usar a key**: header `Authorization: Bearer <api_key>` nos mesmos endpoints que a app web já usa — `POST /api/audit`, `GET /api/audit/:id`, `GET /api/domains` — autenticam por JWT ou por API key indiferentemente (`middleware/apiKeyAuth.js`), resolvendo para o mesmo utilizador em ambos os casos.
+- **Rate limiting**: 100 pedidos / 15 minutos por API key (não afeta a app web, que continua sem este limite).
+- **Documentação**: `GET /api/docs` (sem autenticação) descreve os endpoints disponíveis, o formato do header de autenticação e o rate limit.
+
 ## Análise de gap de conteúdo vs SERP (planos Pro/Agency)
 
 Código pronto em `backend/services/serpAnalysis.js`, `backend/services/contentGap.js`, integrado em `backend/services/auditProcessor.js` — não precisa de nenhuma configuração adicional além das já existentes (`DATAFORSEO_LOGIN`/`PASSWORD`, `ANTHROPIC_API_KEY`); ativa-se automaticamente sempre que a categoria `keywords` está incluída no plano (Pro/Agency). Para cada uma das keywords com maior volume de pesquisa entre as sugeridas para o domínio (no máximo 3, configurável via `CONTENT_GAP_MAX_KEYWORDS`, para controlar custos de SERP e de IA), a auditoria: pesquisa o top 10 real do Google para essa keyword (`serp/google/organic/live/regular` da DataForSEO); analisa o conteúdo de cada um desses concorrentes (reaproveitando `backend/services/contentAnalysis.js`, em paralelo); e pede à IA para identificar subtemas ou entidades que a maioria dos concorrentes cobre mas a página do utilizador não. O resultado fica em `audits.content_gap_result` e aparece no relatório num separador "Cobertura de tema", com os subtemas em falta priorizados por quantos concorrentes os cobrem. Como as restantes categorias, uma falha (numa keyword específica, ou na análise toda) nunca bloqueia o resto da auditoria — fica `null`/entradas em falta no relatório.

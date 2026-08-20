@@ -61,4 +61,22 @@ async function enforcePlanLimit(req, res, next) {
   next();
 }
 
-module.exports = { enforcePlanLimit, checkPlanLimit };
+// Team members share the team owner's plan (see checkPlanLimit above) — used
+// wherever a feature is gated on plan alone, without the audit/domain usage
+// checks checkPlanLimit also does (e.g. routes/apiKeys.js gating API access
+// to Agency).
+async function getEffectivePlanKey(userId) {
+  const userResult = await pool.query(
+    `SELECT u.plan, u.team_id, owner.plan AS team_owner_plan
+     FROM users u
+     LEFT JOIN teams t ON t.id = u.team_id
+     LEFT JOIN users owner ON owner.id = t.owner_user_id
+     WHERE u.id = $1`,
+    [userId]
+  );
+  const user = userResult.rows[0];
+  if (!user) return null;
+  return user.team_id && user.team_owner_plan ? user.team_owner_plan : user.plan;
+}
+
+module.exports = { enforcePlanLimit, checkPlanLimit, getEffectivePlanKey };
