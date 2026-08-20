@@ -36,6 +36,8 @@ When "SERP feature opportunities" data is provided (one entry per target keyword
 
 When "Content data" includes an "authorshipSignals" object with "hasAnySignal" false: judge whether the page reads as an editorial/informational piece (long-form prose meant to inform, not a product/category/contact page) using "wordCount" (well above the ~300-word thin-content threshold — a genuine long-form article) together with "h1s"/"firstParagraphs"/"structuredData" (an Article/BlogPosting/NewsArticle-shaped page). Only for such pages, include a "content" fix with severity "medium" (not "high" — this is a trust/E-E-A-T signal, not a blocking issue) whose "what" states that no author identity was found (neither structured data nor a visible byline), "why" explains that Google's E-E-A-T guidance and AI answer engines both weigh a clear, identifiable author when judging trustworthiness of informational content, and "suggestedFix" recommends adding both a visible byline near the top of the article (author name, ideally linking to an author bio) and Person/Organization structured data (author name plus, when available, url/sameAs/jobTitle) — "snippet"/"wpValue" may include an example JSON-LD "author" block (wpField "schema") only when a plausible author name is inferable from the page; otherwise leave snippet/wpValue null and cmsAutoApplicable false, since inventing an author's identity is not something this app should do automatically. Do not raise this fix for pages that are not long-form editorial content (e.g. thin pages, product/category/contact pages) even if they lack authorship signals.
 
+When "Trust signals" data is provided: this is a quick hygiene checklist, not a core audit category, so none of its fixes should ever be "high" severity. If "httpsActive" is false, include a "technical" fix with severity "medium" whose "what" states that the site does not serve over HTTPS, "why" explains that Google uses HTTPS as a ranking signal and browsers flag HTTP pages as "Not secure" which erodes visitor trust, and "suggestedFix" recommends installing a valid SSL/TLS certificate and enforcing HTTPS site-wide (redirecting HTTP to HTTPS). If "contactPage.found" is false, include a "technical" fix with severity "low" recommending a clearly linked contact or about page be added, since its absence is a weak but real trust signal. If "privacyPolicy.found" is false, include a "technical" fix with severity "medium" recommending a privacy policy page be added and linked (e.g. in the footer), since its absence hurts both user trust and legal compliance (e.g. GDPR). None of these three fixes has a concrete on-page snippet to paste, so "currentValue", "snippet", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null and "cmsAutoApplicable" must be false for all of them.
+
 When "Backlink spam score" data is provided and "toxicBacklinksCount" is greater than 0, include one "backlinks" fix with severity "high": "what" must state how many toxic backlinks were found and name the offending referring domains (from "toxicBacklinks"' "domainFrom" entries); "why" must explain that toxic/spammy backlinks can trigger a Google manual action or algorithmic penalty; "currentValue" is null; "suggestedFix" must recommend reviewing those domains and submitting a disavow file via Google Search Console's Disavow Links tool — disavowing is always a manual human decision, never something this app applies automatically, so "cmsAutoApplicable" must be false, and "wpField", "wpTarget", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null (this fix is informational only, there is no on-page text to locate or replace). "snippet" may list the toxic domains, one per line, for copying into a disavow file.
 
 Write all text fields (title, what, why, currentValue, suggestedFix) in ${languageName}. Keep code/markup in "snippet" as-is (only translate any human-readable copy inside it, e.g. meta description content). "wpValue" for meta_description/post_title should also be written in ${languageName}; "sourceSearchText"/"sourceReplaceText" should match the language of the actual current page content. Return ONLY the JSON array, no prose, no markdown fences.`;
@@ -55,7 +57,7 @@ function parseRecommendationsResponse(content) {
   }
 }
 
-async function generateRecommendations({ domain, technical, content, keywords, backlinks, backlinkSpamScore, coreWebVitals, crawlability, serpOpportunities, language = 'en' }) {
+async function generateRecommendations({ domain, technical, content, keywords, backlinks, backlinkSpamScore, coreWebVitals, crawlability, trustSignals, serpOpportunities, language = 'en' }) {
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 4000,
@@ -72,6 +74,7 @@ Backlink data: ${JSON.stringify(backlinks)}
 Backlink spam score: ${JSON.stringify(backlinkSpamScore)}
 Core Web Vitals: ${JSON.stringify(coreWebVitals)}
 Crawlability: ${JSON.stringify(crawlability)}
+Trust signals: ${JSON.stringify(trustSignals)}
 SERP feature opportunities: ${JSON.stringify(serpOpportunities)}`,
       },
     ],

@@ -16,6 +16,7 @@ const contentAnalysis = require('../services/contentAnalysis');
 const dataforseo = require('../services/dataforseo');
 const coreWebVitals = require('../services/coreWebVitals');
 const crawlability = require('../services/crawlability');
+const trustSignals = require('../services/trustSignals');
 const serpAnalysis = require('../services/serpAnalysis');
 const contentGap = require('../services/contentGap');
 const claude = require('../services/claude');
@@ -66,6 +67,11 @@ function stubDefaults(t) {
   t.mock.method(crawlability, 'checkCrawlability', async () => ({
     robotsTxt: { exists: true, blocksHomepage: false, sitemapUrls: [], raw: 'User-agent: *\nAllow: /\n' },
     sitemap: { exists: true, wellFormed: true, rootElement: 'urlset', urlCount: 1, brokenSampleUrls: [] },
+  }));
+  t.mock.method(trustSignals, 'checkTrustSignals', async () => ({
+    httpsActive: true,
+    contactPage: { found: true, url: 'https://example.com/contact' },
+    privacyPolicy: { found: true, url: 'https://example.com/privacy-policy' },
   }));
   t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'Some Title', imagesMissingAlt: 0 }));
   t.mock.method(serpAnalysis, 'analyzeSerp', async () => ({ organicResults: [], serpFeatures: NO_SERP_FEATURES }));
@@ -324,6 +330,7 @@ test('processAuditJob: only calls the services for categories included in the pl
   const contentMock = t.mock.method(contentAnalysis, 'analyzeContent', async () => ({ title: 'T' }));
   const keywordsMock = t.mock.method(dataforseo, 'getKeywordIdeas', async () => ([]));
   const cwvMock = t.mock.method(coreWebVitals, 'getCoreWebVitals', async () => null);
+  const trustMock = t.mock.method(trustSignals, 'checkTrustSignals', async () => null);
 
   const userId = await createUser(uniqueEmail('worker-categories'));
   const auditId = await createAuditRow(userId, 'https://worker-categories-site.com');
@@ -335,6 +342,7 @@ test('processAuditJob: only calls the services for categories included in the pl
   assert.equal(backlinksMock.mock.callCount(), 0, 'backlinks is not in the plan\'s categories');
   assert.equal(keywordsMock.mock.callCount(), 0, 'keywords is not in the plan\'s categories');
   assert.equal(cwvMock.mock.callCount(), 0, 'core web vitals is fetched alongside technical, so it is skipped too');
+  assert.equal(trustMock.mock.callCount(), 0, 'trust signals are fetched alongside technical, so they are skipped too');
 });
 
 test('processAuditJob: Agency plan with competitor domains configured runs the backlink gap check and persists a fixed set of gap domains', async (t) => {
@@ -502,6 +510,91 @@ test('processAuditJob: passes Core Web Vitals through to Claude for recommendati
 
   await processAuditJob({
     data: { auditId, domain: 'https://worker-cwvclaude-site.com', categories: ['technical', 'content'] },
+  });
+
+  assert.equal(claudeMock.mock.callCount(), 1);
+});
+
+test('processAuditJob: fetches trust signals alongside the technical category and persists them', async (t) => {
+  stubDefaults(t);
+  const trustMock = t.mock.method(trustSignals, 'checkTrustSignals', async (domain) => {
+    assert.equal(domain, 'https://worker-trust-site.com');
+    return {
+      httpsActive: false,
+      contactPage: { found: false, url: null },
+      privacyPolicy: { found: true, url: 'https://worker-trust-site.com/privacy-policy' },
+    };
+  });
+
+  const userId = await createUser(uniqueEmail('worker-trust'));
+  const auditId = await createAuditRow(userId, 'https://worker-trust-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-trust-site.com', categories: ['technical', 'content'] },
+  });
+
+  assert.equal(trustMock.mock.callCount(), 1);
+  const row = await pool.query('SELECT trust_signals_result FROM audits WHERE id = $1', [auditId]);
+  assert.deepEqual(row.rows[0].trust_signals_result, {
+    httpsActive: false,
+    contactPage: { found: false, url: null },
+    privacyPolicy: { found: true, url: 'https://worker-trust-site.com/privacy-policy' },
+  });
+});
+
+test('processAuditJob: trust signals are skipped when "technical" is not an included category', async (t) => {
+  stubDefaults(t);
+  const trustMock = t.mock.method(trustSignals, 'checkTrustSignals', async () => ({ httpsActive: true, contactPage: { found: true, url: 'x' }, privacyPolicy: { found: true, url: 'x' } }));
+
+  const userId = await createUser(uniqueEmail('worker-trust-nocat'));
+  const auditId = await createAuditRow(userId, 'https://worker-trust-nocat-site.com');
+
+  await processAuditJob({ data: { auditId, domain: 'https://worker-trust-nocat-site.com', categories: ['content'] } });
+
+  assert.equal(trustMock.mock.callCount(), 0);
+  const row = await pool.query('SELECT trust_signals_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].trust_signals_result, null);
+});
+
+test('processAuditJob: a trust signals failure is swallowed — trust_signals_result is null and the audit still completes', async (t) => {
+  stubDefaults(t);
+  t.mock.method(trustSignals, 'checkTrustSignals', async () => {
+    throw new Error('ECONNREFUSED');
+  });
+
+  const userId = await createUser(uniqueEmail('worker-trustfail'));
+  const auditId = await createAuditRow(userId, 'https://worker-trustfail-site.com');
+
+  await assert.doesNotReject(
+    processAuditJob({ data: { auditId, domain: 'https://worker-trustfail-site.com', categories: ['technical', 'content'] } })
+  );
+
+  const row = await pool.query('SELECT status, trust_signals_result FROM audits WHERE id = $1', [auditId]);
+  assert.equal(row.rows[0].status, 'completed');
+  assert.equal(row.rows[0].trust_signals_result, null);
+});
+
+test('processAuditJob: passes trust signals through to Claude for recommendation generation', async (t) => {
+  stubDefaults(t);
+  t.mock.method(trustSignals, 'checkTrustSignals', async () => ({
+    httpsActive: false,
+    contactPage: { found: false, url: null },
+    privacyPolicy: { found: false, url: null },
+  }));
+  const claudeMock = t.mock.method(claude, 'generateRecommendations', async (args) => {
+    assert.deepEqual(args.trustSignals, {
+      httpsActive: false,
+      contactPage: { found: false, url: null },
+      privacyPolicy: { found: false, url: null },
+    });
+    return [];
+  });
+
+  const userId = await createUser(uniqueEmail('worker-trustclaude'));
+  const auditId = await createAuditRow(userId, 'https://worker-trustclaude-site.com');
+
+  await processAuditJob({
+    data: { auditId, domain: 'https://worker-trustclaude-site.com', categories: ['technical', 'content'] },
   });
 
   assert.equal(claudeMock.mock.callCount(), 1);

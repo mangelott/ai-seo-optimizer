@@ -11,6 +11,7 @@ const linkGraph = require('./linkGraph');
 const duplicateContent = require('./duplicateContent');
 const coreWebVitals = require('./coreWebVitals');
 const crawlability = require('./crawlability');
+const trustSignals = require('./trustSignals');
 const serpAnalysis = require('./serpAnalysis');
 const contentGap = require('./contentGap');
 const claude = require('./claude');
@@ -253,6 +254,9 @@ async function processAuditJob(job) {
     crawlability: categories.includes('technical')
       ? crawlability.checkCrawlability(domain).catch(() => null)
       : Promise.resolve(null),
+    trustSignals: categories.includes('technical')
+      ? trustSignals.checkTrustSignals(domain).catch(() => null)
+      : Promise.resolve(null),
     gsc:
       gscLink?.gsc_site_url && gscLink?.gsc_refresh_token
         ? googleSearchConsole
@@ -265,15 +269,17 @@ async function processAuditJob(job) {
         : Promise.resolve(null),
   };
 
-  const [technical, content, backlinks, backlinkGap, coreWebVitalsResult, crawlabilityResult, gscResult] = await Promise.all([
-    tasks.technical,
-    tasks.content,
-    tasks.backlinks,
-    tasks.backlinkGap,
-    tasks.coreWebVitals,
-    tasks.crawlability,
-    tasks.gsc,
-  ]);
+  const [technical, content, backlinks, backlinkGap, coreWebVitalsResult, crawlabilityResult, trustSignalsResult, gscResult] =
+    await Promise.all([
+      tasks.technical,
+      tasks.content,
+      tasks.backlinks,
+      tasks.backlinkGap,
+      tasks.coreWebVitals,
+      tasks.crawlability,
+      tasks.trustSignals,
+      tasks.gsc,
+    ]);
 
   // Orphan-page/broken-internal-link detection needs both the crawl's own
   // page_links (from `technical`) and the sitemap's URL inventory (from
@@ -354,6 +360,7 @@ async function processAuditJob(job) {
       backlinks,
       coreWebVitals: coreWebVitalsResult,
       crawlability: crawlabilityResult,
+      trustSignals: trustSignalsResult,
       serpOpportunities,
       language,
     })
@@ -376,8 +383,8 @@ async function processAuditJob(job) {
     `UPDATE audits SET status = 'completed', technical_result = $1, content_result = $2,
      keyword_result = $3, backlink_result = $4, ai_recommendations = $5, score = $6, gsc_result = $7,
      core_web_vitals = $8, robots_txt_result = $9, sitemap_result = $10, content_gap_result = $11,
-     backlink_gap_result = $12, completed_at = now()
-     WHERE id = $13`,
+     backlink_gap_result = $12, trust_signals_result = $13, completed_at = now()
+     WHERE id = $14`,
     [
       technical,
       content,
@@ -391,6 +398,7 @@ async function processAuditJob(job) {
       JSON.stringify(crawlabilityResult?.sitemap ? sitemapForStorage : null),
       JSON.stringify(contentGapResult),
       JSON.stringify(backlinkGap),
+      JSON.stringify(trustSignalsResult),
       auditId,
     ]
   );

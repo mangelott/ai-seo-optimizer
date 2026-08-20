@@ -121,6 +121,30 @@ test('system prompt tells the model not to invent an author identity for the aut
   assert.match(prompt, /inventing an author/);
 });
 
+test('system prompt caps trust signal fixes at medium severity, never high', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"Trust signals"/);
+  assert.match(prompt, /none of its fixes should ever be "high" severity/);
+});
+
+test('system prompt flags missing HTTPS at medium severity and missing contact page at low severity', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"httpsActive" is false/);
+  assert.match(prompt, /"contactPage\.found" is false/);
+  assert.match(prompt, /severity "low"/);
+});
+
+test('system prompt flags a missing privacy policy at medium severity, citing GDPR', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"privacyPolicy\.found" is false/);
+  assert.match(prompt, /GDPR/);
+});
+
+test('system prompt requires trust signal fixes to have no on-page snippet fields', () => {
+  const prompt = buildSystemPrompt('en');
+  assert.match(prompt, /"currentValue", "snippet", "wpValue", "sourceSearchText", "sourceReplaceText" must all be null/);
+});
+
 test('system prompt requests the correct output language', () => {
   assert.match(buildSystemPrompt('pt'), /Portuguese/);
   assert.match(buildSystemPrompt('en'), /English/);

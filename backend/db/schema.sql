@@ -58,6 +58,7 @@ ALTER TABLE audits ADD COLUMN IF NOT EXISTS robots_txt_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS sitemap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS content_gap_result JSONB;
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS backlink_gap_result JSONB;
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS trust_signals_result JSONB;
 CREATE INDEX IF NOT EXISTS idx_audits_share_token ON audits(share_token);
 
 -- Site-wide crawl (Pro/Agency): one row per page found by the DataForSEO
